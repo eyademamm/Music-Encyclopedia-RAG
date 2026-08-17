@@ -20,6 +20,7 @@
 <div class="kpis" id="kpis"></div>
 <div class="grid">
   <div class="card"><canvas id="volumeChart"></canvas></div>
+  <div class="card"><canvas id="costChart"></canvas></div>
   <div class="card"><canvas id="feedbackChart"></canvas></div>
   <div class="card"><canvas id="responseTimeChart"></canvas></div>
   <div class="card"><canvas id="sourceChart"></canvas></div>
@@ -29,7 +30,9 @@
 <script>
 async function loadStats() {
   const res = await fetch('/stats');
-  const logs = await res.json();
+  const data = await res.json();
+  const logs = data.logs || data;
+  const costs = data.costs || [];
 
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="num">${logs.length}</div><div class="label">Total questions</div></div>
@@ -93,6 +96,18 @@ async function loadStats() {
     },
     options: { plugins: { title: { display: true, text: 'Feedback Over Time', color: '#eee' } } }
   });
+
+  // 6. Cost chart
+  if (costs.length > 0) {
+    new Chart(document.getElementById('costChart'), {
+      type: 'bar',
+      data: {
+        labels: costs.map(c => c.date),
+        datasets: [{ label: 'Cost ($)', data: costs.map(c => c.cost), backgroundColor: '#28a745' }]
+      },
+      options: { plugins: { title: { display: true, text: 'Daily API Cost', color: '#eee' } } }
+    });
+  }
 }
 loadStats();
 </script>

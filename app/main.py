@@ -124,8 +124,21 @@ def stats():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute("SELECT * FROM logs ORDER BY created_at DESC").fetchall()]
+    
+    # Calculate daily cost (mock: count * $0.002 per interaction)
+    from collections import defaultdict
+    from datetime import datetime
+    
+    daily_counts = defaultdict(int)
+    for r in rows:
+        # created_at is a timestamp
+        dt = datetime.fromtimestamp(r["created_at"]).strftime("%Y-%m-%d")
+        daily_counts[dt] += 1
+        
+    cost_data = [{"date": dt, "cost": count * 0.002} for dt, count in sorted(daily_counts.items())]
+    
     conn.close()
-    return rows
+    return {"logs": rows, "costs": cost_data}
 
 
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent.parent / "static"), name="static")

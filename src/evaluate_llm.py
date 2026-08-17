@@ -89,7 +89,7 @@ def main():
     docs = load_docs()
     text_index = build_text_index(docs)
     vindex, embedder = build_vector_index(docs)
-    ground_truth = json.loads(GT_PATH.read_text())
+    ground_truth = json.loads(GT_PATH.read_text(encoding="utf-8"))
     
     if len(ground_truth) > args.max_samples:
         by_topic = defaultdict(list)

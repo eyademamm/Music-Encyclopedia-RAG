@@ -21,7 +21,7 @@ DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "docs.json"
 
 
 def load_docs():
-    return json.loads(DATA_PATH.read_text())
+    return json.loads(DATA_PATH.read_text(encoding="utf-8"))
 
 
 def build_text_index(docs):

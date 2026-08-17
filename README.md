@@ -41,7 +41,7 @@ ingest.py  -->  data/docs.json  -->  search.py (text / ONNX vector / hybrid RRF)
   - **Text Search**: Hit rate: 64.9% | MRR: 0.547
   - **Vector Search (ONNX)**: Hit rate: 90.5% | MRR: 0.785
   - **Hybrid Search**: Hit rate: 91.0% | MRR: 0.711
-  Vector search drastically outperformed text search and is considered the best standalone method.
+  Vector search drastically outperformed text search and is considered the best standalone method. Hybrid search improved the hit rate slightly but heavily degraded MRR because the Reciprocal Rank Fusion (RRF) logic mixes in lower-quality text results without thresholding.
 - **LLM evaluation**: two prompt variants are compared (see `src/evaluate_llm.py`)
   for answer relevance/faithfulness. With stratified sampling on the evaluation set, both prompts achieved **96.6% relevance**. The better prompt is used in `app/main.py`.
 
@@ -75,6 +75,9 @@ ingest.py  -->  data/docs.json  -->  search.py (text / ONNX vector / hybrid RRF)
    ```bash
    docker compose up --build
    ```
+   > [!WARNING]
+   > **Server Startup Latency:** The server generates ONNX embeddings for the entire document corpus *in memory on startup* rather than persisting them to disk. This is CPU-intensive and can take 5-10 minutes. The server will not be reachable on port 8000 until the `Application startup complete.` message appears in the logs.
+
 8. Open http://localhost:8000 to ask questions, and
    http://localhost:8000/static/dashboard.html for the monitoring dashboard.
 
@@ -85,10 +88,10 @@ It features a premium vinyl record player animation to simulate crate-digging, r
 
 ## Monitoring
 
-Every query is logged to `data/logs.db` (SQLite) with response time, retrieval
+Every query is logged to `data/logs.db` (SQLite) with response time, real token usage (prompt and completion tokens), calculated cost (based on `gpt-5.4-mini` pricing), retrieval
 method, and user feedback (👍/👎). `static/dashboard.html` renders 6 charts:
 question volume, estimated daily API cost, feedback distribution, response time per query, retrieval
-method breakdown, and feedback over time.
+method breakdown, and feedback over time. Source tracking is deduplicated to ensure clean source citations in the UI.
 
 ## Containerization
 

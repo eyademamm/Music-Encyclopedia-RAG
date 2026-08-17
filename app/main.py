@@ -40,9 +40,22 @@ def init_db():
             num_chunks INTEGER,
             response_time REAL,
             feedback INTEGER,
-            created_at REAL
+            created_at REAL,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            cost REAL DEFAULT 0.0
         )
     """)
+    # Migrate existing databases that lack the new columns
+    for col, col_type, default in [
+        ("prompt_tokens", "INTEGER", "0"),
+        ("completion_tokens", "INTEGER", "0"),
+        ("cost", "REAL", "0.0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE logs ADD COLUMN {col} {col_type} DEFAULT {default}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -84,28 +97,42 @@ def rag_answer(question: str):
         messages=[{"role": "user", "content": prompt}],
     )
     answer = resp.choices[0].message.content
-    return answer, chunks
+
+    # Extract real token usage from OpenAI response
+    usage = resp.usage
+    prompt_tokens = usage.prompt_tokens if usage else 0
+    completion_tokens = usage.completion_tokens if usage else 0
+    # Cost formula: input $0.75/1M tokens, output $4.50/1M tokens
+    cost = (prompt_tokens * 0.75 + completion_tokens * 4.50) / 1_000_000
+
+    return answer, chunks, prompt_tokens, completion_tokens, cost
 
 
 @app.post("/ask")
 def ask(req: AskRequest):
     start = time.time()
-    answer, chunks = rag_answer(req.question)
+    answer, chunks, prompt_tokens, completion_tokens, cost = rag_answer(req.question)
     elapsed = time.time() - start
 
     interaction_id = str(uuid.uuid4())
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        "INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (interaction_id, req.question, answer, "hybrid", len(chunks), elapsed, None, time.time()),
+        "INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (interaction_id, req.question, answer, "hybrid", len(chunks), elapsed, None, time.time(),
+         prompt_tokens, completion_tokens, cost),
     )
     conn.commit()
     conn.close()
 
+    seen_sources = []
+    for c in chunks:
+        if c["topic"] not in seen_sources:
+            seen_sources.append(c["topic"])
+
     return {
         "interaction_id": interaction_id,
         "answer": answer,
-        "sources": [c["topic"] for c in chunks],
+        "sources": seen_sources,
         "response_time": elapsed,
     }
 
@@ -124,19 +151,18 @@ def stats():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute("SELECT * FROM logs ORDER BY created_at DESC").fetchall()]
-    
-    # Calculate daily cost (mock: count * $0.002 per interaction)
+
+    # Aggregate real per-row cost by day
     from collections import defaultdict
     from datetime import datetime
-    
-    daily_counts = defaultdict(int)
+
+    daily_cost = defaultdict(float)
     for r in rows:
-        # created_at is a timestamp
         dt = datetime.fromtimestamp(r["created_at"]).strftime("%Y-%m-%d")
-        daily_counts[dt] += 1
-        
-    cost_data = [{"date": dt, "cost": count * 0.002} for dt, count in sorted(daily_counts.items())]
-    
+        daily_cost[dt] += r.get("cost", 0.0) or 0.0
+
+    cost_data = [{"date": dt, "cost": round(total, 6)} for dt, total in sorted(daily_cost.items())]
+
     conn.close()
     return {"logs": rows, "costs": cost_data}
 

@@ -81,12 +81,12 @@ def judge(question, context, answer):
 def main():
     docs = load_docs()
     text_index = build_text_index(docs)
-    vindex, vectorizer = build_vector_index(docs)
+    vindex, embedder = build_vector_index(docs)
     ground_truth = json.loads(GT_PATH.read_text())
 
     results = {"prompt_a": [], "prompt_b": []}
     for gt in ground_truth:
-        chunks = hybrid_search(text_index, vindex, vectorizer, gt["question"], num_results=5)
+        chunks = hybrid_search(text_index, vindex, embedder, gt["question"], num_results=5)
         context = build_context(chunks)
 
         for name, template in [("prompt_a", PROMPT_A), ("prompt_b", PROMPT_B)]:

@@ -26,7 +26,7 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY") or "sk-placeholder-set-
 # --- build indexes once at startup ---
 docs = load_docs()
 text_index = build_text_index(docs)
-vector_index, vectorizer = build_vector_index(docs)
+vector_index, embedder = build_vector_index(docs)
 
 
 def init_db():
@@ -76,7 +76,7 @@ def build_context(chunks):
 
 
 def rag_answer(question: str):
-    chunks = hybrid_search(text_index, vector_index, vectorizer, question, num_results=5)
+    chunks = hybrid_search(text_index, vector_index, embedder, question, num_results=5)
     prompt = PROMPT_TEMPLATE.format(context=build_context(chunks), question=question)
 
     resp = client.chat.completions.create(

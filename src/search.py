@@ -8,7 +8,14 @@ from pathlib import Path
 
 import numpy as np
 from minsearch import Index, VectorSearch
-from sklearn.feature_extraction.text import TfidfVectorizer
+from embedder import Embedder
+
+_embedder = None
+def _get_embedder():
+    global _embedder
+    if _embedder is None:
+        _embedder = Embedder()
+    return _embedder
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "docs.json"
 
@@ -24,31 +31,29 @@ def build_text_index(docs):
 
 
 def build_vector_index(docs):
-    """TF-IDF based vector index (no external embedding API needed —
-    keeps the project runnable without extra API costs; swap in
-    sentence-transformers or OpenAI embeddings if you want higher quality)."""
+    """ONNX-based vector index."""
+    embedder = _get_embedder()
     texts = [d["chunk"] for d in docs]
-    vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
-    X = vectorizer.fit_transform(texts).toarray()
+    embeddings = embedder.encode_batch(texts)
 
     vindex = VectorSearch(keyword_fields=[])
-    vindex.fit(X, docs)
-    return vindex, vectorizer
+    vindex.fit(embeddings, docs)
+    return vindex, embedder
 
 
 def text_search(index, query, num_results=5):
     return index.search(query, num_results=num_results)
 
 
-def vector_search(vindex, vectorizer, query, num_results=5):
-    q_vec = vectorizer.transform([query]).toarray()[0]
+def vector_search(vindex, embedder, query, num_results=5):
+    q_vec = embedder.encode(query)
     return vindex.search(q_vec, num_results=num_results)
 
 
-def hybrid_search(index, vindex, vectorizer, query, num_results=5, k=60):
+def hybrid_search(index, vindex, embedder, query, num_results=5, k=60):
     """Reciprocal Rank Fusion of text + vector results."""
     text_results = text_search(index, query, num_results=10)
-    vec_results = vector_search(vindex, vectorizer, query, num_results=10)
+    vec_results = vector_search(vindex, embedder, query, num_results=10)
 
     scores = {}
     doc_lookup = {}
@@ -71,7 +76,7 @@ if __name__ == "__main__":
     docs = load_docs()
     print(f"Loaded {len(docs)} chunks")
     index = build_text_index(docs)
-    vindex, vectorizer = build_vector_index(docs)
+    vindex, embedder = build_vector_index(docs)
 
     q = "Who were the members of the Beatles?"
     print("\nText search:")
@@ -79,5 +84,5 @@ if __name__ == "__main__":
         print(" -", d["topic"], "|", d["chunk"][:80])
 
     print("\nHybrid search:")
-    for d in hybrid_search(index, vindex, vectorizer, q, 3):
+    for d in hybrid_search(index, vindex, embedder, q, 3):
         print(" -", d["topic"], "|", d["chunk"][:80])

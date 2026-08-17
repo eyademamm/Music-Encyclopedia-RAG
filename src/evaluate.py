@@ -44,12 +44,12 @@ def main():
     ground_truth = json.loads(GT_PATH.read_text())
 
     index = build_text_index(docs)
-    vindex, vectorizer = build_vector_index(docs)
+    vindex, embedder = build_vector_index(docs)
 
     methods = {
         "text": lambda q: text_search(index, q, num_results=5),
-        "vector": lambda q: vector_search(vindex, vectorizer, q, num_results=5),
-        "hybrid": lambda q: hybrid_search(index, vindex, vectorizer, q, num_results=5),
+        "vector": lambda q: vector_search(vindex, embedder, q, num_results=5),
+        "hybrid": lambda q: hybrid_search(index, vindex, embedder, q, num_results=5),
     }
 
     print(f"Evaluating on {len(ground_truth)} questions...\n")

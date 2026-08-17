@@ -11,6 +11,7 @@ COPY src/ src/
 COPY app/ app/
 COPY static/ static/
 COPY data/ data/
+COPY models/ models/
 
 EXPOSE 8000
 

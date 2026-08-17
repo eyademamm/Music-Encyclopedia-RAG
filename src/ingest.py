@@ -17,6 +17,9 @@ from pathlib import Path
 import requests
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
+HEADERS = {
+    "User-Agent": "MusicEncyclopediaRAG/1.0 (LLM Zoomcamp student project; contact: eyademam28@gmail.com)"
+}
 OUT_PATH = Path(__file__).resolve().parent.parent / "data" / "docs.json"
 
 # Seed list of music topics. Feel free to expand — this is intentionally
@@ -45,7 +48,7 @@ def fetch_extract(title: str) -> dict | None:
         "format": "json",
         "redirects": 1,
     }
-    r = requests.get(WIKI_API, params=params, timeout=20)
+    r = requests.get(WIKI_API, params=params, headers=HEADERS, timeout=20)
     r.raise_for_status()
     pages = r.json().get("query", {}).get("pages", {})
     for _, page in pages.items():

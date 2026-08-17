@@ -48,20 +48,20 @@ ingest.py  -->  data/docs.json  -->  search.py (text / vector / hybrid RRF)
 2. Copy `.env.example` to `.env` and add your `OPENAI_API_KEY`.
 3. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 4. Build the knowledge base (needs internet access to Wikipedia):
    ```bash
-   python src/ingest.py
+   uv run python src/ingest.py
    ```
 5. Generate ground truth and run retrieval evaluation:
    ```bash
-   python src/generate_ground_truth.py
-   python src/evaluate.py
+   uv run python src/generate_ground_truth.py
+   uv run python src/evaluate.py
    ```
 6. Run the app:
    ```bash
-   uvicorn app.main:app --reload
+   uv run uvicorn app.main:app --reload
    ```
    Or with Docker:
    ```bash

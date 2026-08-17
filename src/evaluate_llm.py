@@ -10,8 +10,11 @@ Usage:
     python src/evaluate_llm.py
 """
 
+import argparse
 import json
 import os
+import random
+from collections import defaultdict
 from pathlib import Path
 
 from openai import OpenAI
@@ -79,10 +82,30 @@ def judge(question, context, answer):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-samples", type=int, default=150)
+    args = parser.parse_args()
+
     docs = load_docs()
     text_index = build_text_index(docs)
     vindex, embedder = build_vector_index(docs)
     ground_truth = json.loads(GT_PATH.read_text())
+    
+    if len(ground_truth) > args.max_samples:
+        by_topic = defaultdict(list)
+        for gt in ground_truth:
+            topic = gt["doc_id"].rsplit("-", 1)[0]
+            by_topic[topic].append(gt)
+            
+        sampled_gt = []
+        total_gt = len(ground_truth)
+        for topic, items in by_topic.items():
+            # max(1, ...) ensures small topics get at least 1 sample
+            target_count = max(1, int(round(len(items) / total_gt * args.max_samples)))
+            sampled_gt.extend(random.sample(items, min(target_count, len(items))))
+            
+        random.shuffle(sampled_gt)
+        ground_truth = sampled_gt[:args.max_samples]
 
     results = {"prompt_a": [], "prompt_b": []}
     for gt in ground_truth:

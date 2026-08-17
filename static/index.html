@@ -2,54 +2,409 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Music Encyclopedia RAG</title>
+<title>The Crate</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; background: #111; color: #eee; }
-  h1 { font-size: 22px; }
-  input { width: 100%; padding: 12px; font-size: 15px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; box-sizing: border-box; }
-  button { margin-top: 10px; padding: 10px 18px; border-radius: 8px; border: none; background: #5b5be0; color: white; cursor: pointer; }
-  #answer { margin-top: 24px; line-height: 1.5; white-space: pre-wrap; }
-  #sources { margin-top: 10px; font-size: 13px; color: #999; }
-  .fb { margin-top: 14px; }
-  .fb button { background: #333; margin-right: 8px; }
-  #loading { display: none; color: #999; margin-top: 16px; }
+  :root {
+    --bg-deep:        #1a1410;
+    --bg-surface:     #2a2118;
+    --bg-surface-alt: #352c22;
+    --accent-amber:   #d4943a;
+    --accent-orange:  #e8732a;
+    --accent-gold:    #f0c060;
+    --text-primary:   #ece4d8;
+    --text-secondary: #a0937e;
+    --text-muted:     #6b5f50;
+    --vinyl-black:    #111111;
+    --vinyl-groove:   #222222;
+    --vinyl-label:    var(--accent-amber);
+    --border:         #3a3028;
+    --shadow:         rgba(0,0,0,0.4);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    max-width: 680px;
+    margin: 60px auto;
+    padding: 0 20px;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 80%);
+  }
+  
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px;
+    margin-bottom: 5px;
+    color: var(--accent-gold);
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    margin-top: 0;
+    margin-bottom: 30px;
+  }
+
+  input {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-family: 'Inter', sans-serif;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    box-shadow: inset 0 2px 4px var(--shadow);
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--accent-amber);
+  }
+
+  button.ask-btn {
+    margin-top: 16px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-amber);
+    color: #111;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    font-family: 'Inter', sans-serif;
+  }
+  button.ask-btn:hover {
+    background: var(--accent-orange);
+  }
+  button.ask-btn:active {
+    transform: translateY(1px);
+  }
+
+  /* Vinyl Animation */
+  .vinyl-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 40px;
+    position: relative;
+    height: 200px;
+  }
+  .vinyl-container.hidden {
+    display: none;
+  }
+
+  .vinyl-record {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: repeating-radial-gradient(
+      circle at center,
+      var(--vinyl-black) 0px,
+      var(--vinyl-groove) 1px,
+      var(--vinyl-black) 4px
+    );
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 20px var(--shadow);
+  }
+  
+  .vinyl-label {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    background: var(--vinyl-label);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #fff;
+  }
+  .vinyl-hole {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #000;
+  }
+
+  .vinyl-container.spinning .vinyl-record {
+    animation: spin 1.8s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .tonearm {
+    position: absolute;
+    top: 10px;
+    right: calc(50% - 120px);
+    width: 40px;
+    height: 140px;
+    transform-origin: 20px 20px;
+    transform: rotate(-30deg);
+    z-index: 10;
+  }
+  .tonearm-base {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #444;
+    border: 3px solid #222;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .tonearm-arm {
+    width: 8px;
+    height: 120px;
+    background: silver;
+    position: absolute;
+    top: 20px;
+    left: 16px;
+    border-radius: 4px;
+  }
+  .tonearm-head {
+    width: 14px;
+    height: 24px;
+    background: #222;
+    position: absolute;
+    bottom: -10px;
+    left: 13px;
+    transform: rotate(20deg);
+  }
+
+  .vinyl-container.spinning .tonearm {
+    animation: lower-needle 0.8s ease-out forwards;
+  }
+
+  @keyframes lower-needle {
+    from { transform: rotate(-30deg); }
+    to   { transform: rotate(-5deg); }
+  }
+  
+  .loading-text {
+    text-align: center;
+    margin-top: 16px;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .loading-text.hidden {
+    display: none;
+  }
+
+  /* Answer Card */
+  #answer-container {
+    display: none;
+    margin-top: 30px;
+  }
+  #answer-card {
+    background: var(--bg-surface);
+    border-radius: 12px;
+    padding: 28px;
+    border-top: 4px solid var(--accent-amber);
+    box-shadow: 0 4px 12px var(--shadow);
+    margin-bottom: 24px;
+  }
+  .liner-notes-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent-amber);
+    margin-bottom: 12px;
+  }
+  #answer {
+    font-family: 'Playfair Display', serif;
+    font-size: 17px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    color: var(--text-primary);
+  }
+
+  /* Source Cards */
+  .sources-section {
+    margin-top: 20px;
+  }
+  .sources-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  #sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .source-card {
+    background: var(--bg-surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.2s, border-color 0.2s, color 0.2s;
+  }
+  .source-card:hover {
+    transform: scale(1.05);
+    border-color: var(--accent-amber);
+    color: var(--text-primary);
+  }
+  .source-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #111;
+    border: 1px solid #444;
+    display: inline-block;
+  }
+
+  /* Feedback */
+  .fb {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+  }
+  .fb button {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 6px var(--shadow), inset 0 1px 1px rgba(255,255,255,0.05);
+    transition: all 0.2s;
+  }
+  .fb button:hover {
+    color: var(--accent-amber);
+    border-color: var(--accent-amber);
+  }
+  .fb button:active {
+    box-shadow: inset 0 3px 6px var(--shadow);
+    transform: translateY(2px);
+  }
+  #fb-thanks {
+    margin-top: 24px;
+    color: var(--accent-amber);
+    font-style: italic;
+    display: none;
+  }
 </style>
 </head>
 <body>
-  <h1>🎵 Music Encyclopedia RAG</h1>
-  <p>Ask anything about artists, bands, and genres.</p>
-  <input id="q" placeholder="e.g. When did the Beatles form?" />
-  <button onclick="ask()">Ask</button>
-  <div id="loading">Thinking…</div>
-  <div id="answer"></div>
-  <div id="sources"></div>
-  <div class="fb" id="fb" style="display:none;">
-    <button onclick="sendFeedback(1)">👍</button>
-    <button onclick="sendFeedback(-1)">👎</button>
+  <h1>The Crate</h1>
+  <p class="subtitle">Dig through the stacks. Ask anything about music.</p>
+  
+  <input id="q" placeholder="What's on your mind? Dig into any artist, genre, or era..." />
+  <button class="ask-btn" onclick="ask()">Drop the Needle</button>
+  
+  <div id="vinyl-container" class="vinyl-container hidden">
+    <div class="vinyl-record">
+      <div class="vinyl-label"><div class="vinyl-hole"></div></div>
+    </div>
+    <div class="tonearm">
+      <div class="tonearm-arm"></div>
+      <div class="tonearm-head"></div>
+      <div class="tonearm-base"></div>
+    </div>
+  </div>
+  <div id="loading-text" class="loading-text hidden">Spinning up...</div>
+
+  <div id="answer-container">
+    <div id="answer-card">
+      <div class="liner-notes-label">Liner Notes</div>
+      <div id="answer"></div>
+    </div>
+    
+    <div class="sources-section">
+      <div class="sources-title">From the collection:</div>
+      <div id="sources"></div>
+    </div>
+    
+    <div class="fb" id="fb">
+      <button onclick="sendFeedback(1)">👍 Solid track</button>
+      <button onclick="sendFeedback(-1)">👎 Skip</button>
+    </div>
+    <div id="fb-thanks">Noted! 🎶</div>
   </div>
 
 <script>
 let lastInteractionId = null;
 
+const loadingPhrases = [
+  "Spinning up...",
+  "Flipping through the crates...",
+  "Pulling a deep cut...",
+  "Dusting off the vinyl..."
+];
+
 async function ask() {
   const question = document.getElementById('q').value.trim();
   if (!question) return;
-  document.getElementById('loading').style.display = 'block';
-  document.getElementById('answer').innerText = '';
-  document.getElementById('sources').innerText = '';
-  document.getElementById('fb').style.display = 'none';
-
-  const res = await fetch('/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question })
-  });
-  const data = await res.json();
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('answer').innerText = data.answer;
-  document.getElementById('sources').innerText = 'Sources: ' + data.sources.join(', ');
-  lastInteractionId = data.interaction_id;
-  document.getElementById('fb').style.display = 'block';
+  
+  // Show animation
+  const vinylContainer = document.getElementById('vinyl-container');
+  const loadingText = document.getElementById('loading-text');
+  
+  vinylContainer.classList.remove('hidden');
+  vinylContainer.classList.add('spinning');
+  
+  loadingText.classList.remove('hidden');
+  loadingText.innerText = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
+  
+  // Hide previous answer
+  document.getElementById('answer-container').style.display = 'none';
+  document.getElementById('fb').style.display = 'flex';
+  document.getElementById('fb-thanks').style.display = 'none';
+  
+  try {
+    const res = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+    const data = await res.json();
+    
+    // Stop animation
+    vinylContainer.classList.remove('spinning');
+    setTimeout(() => {
+      vinylContainer.classList.add('hidden');
+      loadingText.classList.add('hidden');
+      
+      // Render answer
+      document.getElementById('answer').innerText = data.answer;
+      
+      // Render sources as cards
+      const sourcesHtml = data.sources.map(src => 
+        `<div class="source-card"><span class="source-icon"></span>${src}</div>`
+      ).join('');
+      document.getElementById('sources').innerHTML = sourcesHtml;
+      
+      lastInteractionId = data.interaction_id;
+      document.getElementById('answer-container').style.display = 'block';
+    }, 600); // Wait a bit for the arm to return
+    
+  } catch (err) {
+    console.error(err);
+    vinylContainer.classList.remove('spinning');
+    setTimeout(() => {
+      vinylContainer.classList.add('hidden');
+      loadingText.innerText = "Error reading record.";
+    }, 600);
+  }
 }
 
 async function sendFeedback(value) {
@@ -60,6 +415,7 @@ async function sendFeedback(value) {
     body: JSON.stringify({ interaction_id: lastInteractionId, feedback: value })
   });
   document.getElementById('fb').style.display = 'none';
+  document.getElementById('fb-thanks').style.display = 'block';
 }
 
 document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });

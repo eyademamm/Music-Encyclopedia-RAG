@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Monitoring Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 30px; }
+  h1 { font-size: 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+  .card { background: #1c1c1c; border-radius: 10px; padding: 16px; }
+  .kpis { display: flex; gap: 20px; margin-top: 16px; }
+  .kpi { background: #1c1c1c; border-radius: 10px; padding: 16px 24px; }
+  .kpi .num { font-size: 26px; font-weight: 700; }
+  .kpi .label { font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+<h1>📊 Music RAG — Monitoring Dashboard</h1>
+<div class="kpis" id="kpis"></div>
+<div class="grid">
+  <div class="card"><canvas id="volumeChart"></canvas></div>
+  <div class="card"><canvas id="feedbackChart"></canvas></div>
+  <div class="card"><canvas id="responseTimeChart"></canvas></div>
+  <div class="card"><canvas id="sourceChart"></canvas></div>
+  <div class="card" style="grid-column: span 2;"><canvas id="feedbackOverTimeChart"></canvas></div>
+</div>
+
+<script>
+async function loadStats() {
+  const res = await fetch('/stats');
+  const logs = await res.json();
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="num">${logs.length}</div><div class="label">Total questions</div></div>
+    <div class="kpi"><div class="num">${(logs.reduce((s,l)=>s+l.response_time,0)/(logs.length||1)).toFixed(2)}s</div><div class="label">Avg response time</div></div>
+    <div class="kpi"><div class="num">${logs.filter(l=>l.feedback===1).length}</div><div class="label">👍 feedback</div></div>
+    <div class="kpi"><div class="num">${logs.filter(l=>l.feedback===-1).length}</div><div class="label">👎 feedback</div></div>
+  `;
+
+  // 1. Question volume over time (by day)
+  const byDay = {};
+  logs.forEach(l => {
+    const day = new Date(l.created_at * 1000).toISOString().slice(0,10);
+    byDay[day] = (byDay[day] || 0) + 1;
+  });
+  new Chart(document.getElementById('volumeChart'), {
+    type: 'bar',
+    data: { labels: Object.keys(byDay), datasets: [{ label: 'Questions/day', data: Object.values(byDay), backgroundColor: '#5b5be0' }] },
+    options: { plugins: { title: { display: true, text: 'Question Volume', color: '#eee' } } }
+  });
+
+  // 2. Feedback distribution
+  const fb = { up: logs.filter(l=>l.feedback===1).length, down: logs.filter(l=>l.feedback===-1).length, none: logs.filter(l=>l.feedback==null).length };
+  new Chart(document.getElementById('feedbackChart'), {
+    type: 'doughnut',
+    data: { labels: ['👍', '👎', 'No feedback'], datasets: [{ data: [fb.up, fb.down, fb.none], backgroundColor: ['#4caf50','#e05b5b','#555'] }] },
+    options: { plugins: { title: { display: true, text: 'Feedback Distribution', color: '#eee' } } }
+  });
+
+  // 3. Response time distribution
+  new Chart(document.getElementById('responseTimeChart'), {
+    type: 'bar',
+    data: { labels: logs.map((l,i)=>i+1), datasets: [{ label: 'Response time (s)', data: logs.map(l=>l.response_time), backgroundColor: '#e0a55b' }] },
+    options: { plugins: { title: { display: true, text: 'Response Time per Query', color: '#eee' } } }
+  });
+
+  // 4. Retrieval method used
+  const byMethod = {};
+  logs.forEach(l => { byMethod[l.method] = (byMethod[l.method] || 0) + 1; });
+  new Chart(document.getElementById('sourceChart'), {
+    type: 'pie',
+    data: { labels: Object.keys(byMethod), datasets: [{ data: Object.values(byMethod), backgroundColor: ['#5b5be0','#e05b5b','#4caf50'] }] },
+    options: { plugins: { title: { display: true, text: 'Retrieval Method Used', color: '#eee' } } }
+  });
+
+  // 5. Feedback over time
+  const fbByDay = {};
+  logs.forEach(l => {
+    const day = new Date(l.created_at * 1000).toISOString().slice(0,10);
+    fbByDay[day] = fbByDay[day] || { up: 0, down: 0 };
+    if (l.feedback === 1) fbByDay[day].up++;
+    if (l.feedback === -1) fbByDay[day].down++;
+  });
+  new Chart(document.getElementById('feedbackOverTimeChart'), {
+    type: 'line',
+    data: {
+      labels: Object.keys(fbByDay),
+      datasets: [
+        { label: '👍', data: Object.values(fbByDay).map(d=>d.up), borderColor: '#4caf50' },
+        { label: '👎', data: Object.values(fbByDay).map(d=>d.down), borderColor: '#e05b5b' }
+      ]
+    },
+    options: { plugins: { title: { display: true, text: 'Feedback Over Time', color: '#eee' } } }
+  });
+}
+loadStats();
+</script>
+</body>
+</html>

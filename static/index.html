@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Music Encyclopedia RAG</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; background: #111; color: #eee; }
+  h1 { font-size: 22px; }
+  input { width: 100%; padding: 12px; font-size: 15px; border-radius: 8px; border: 1px solid #444; background: #1c1c1c; color: #eee; box-sizing: border-box; }
+  button { margin-top: 10px; padding: 10px 18px; border-radius: 8px; border: none; background: #5b5be0; color: white; cursor: pointer; }
+  #answer { margin-top: 24px; line-height: 1.5; white-space: pre-wrap; }
+  #sources { margin-top: 10px; font-size: 13px; color: #999; }
+  .fb { margin-top: 14px; }
+  .fb button { background: #333; margin-right: 8px; }
+  #loading { display: none; color: #999; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <h1>🎵 Music Encyclopedia RAG</h1>
+  <p>Ask anything about artists, bands, and genres.</p>
+  <input id="q" placeholder="e.g. When did the Beatles form?" />
+  <button onclick="ask()">Ask</button>
+  <div id="loading">Thinking…</div>
+  <div id="answer"></div>
+  <div id="sources"></div>
+  <div class="fb" id="fb" style="display:none;">
+    <button onclick="sendFeedback(1)">👍</button>
+    <button onclick="sendFeedback(-1)">👎</button>
+  </div>
+
+<script>
+let lastInteractionId = null;
+
+async function ask() {
+  const question = document.getElementById('q').value.trim();
+  if (!question) return;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('answer').innerText = '';
+  document.getElementById('sources').innerText = '';
+  document.getElementById('fb').style.display = 'none';
+
+  const res = await fetch('/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question })
+  });
+  const data = await res.json();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('answer').innerText = data.answer;
+  document.getElementById('sources').innerText = 'Sources: ' + data.sources.join(', ');
+  lastInteractionId = data.interaction_id;
+  document.getElementById('fb').style.display = 'block';
+}
+
+async function sendFeedback(value) {
+  if (!lastInteractionId) return;
+  await fetch('/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interaction_id: lastInteractionId, feedback: value })
+  });
+  document.getElementById('fb').style.display = 'none';
+}
+
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+</script>
+</body>
+</html>

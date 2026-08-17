@@ -21,7 +21,7 @@ prose (history, biography, style) is indexed.
 ## Architecture
 
 ```
-ingest.py  -->  data/docs.json  -->  search.py (text / vector / hybrid RRF)
+ingest.py  -->  data/docs.json  -->  search.py (text / ONNX vector / hybrid RRF)
                                           |
                                      app/main.py (FastAPI)
                                      - /ask       RAG answer + logs interaction
@@ -34,13 +34,16 @@ ingest.py  -->  data/docs.json  -->  search.py (text / vector / hybrid RRF)
 
 ## Evaluation
 
-- **Retrieval evaluation** (`src/evaluate.py`): text search, vector search (TF-IDF),
+- **Retrieval evaluation** (`src/evaluate.py`): text search, vector search (BGE small ONNX embeddings),
   and hybrid search (Reciprocal Rank Fusion) are all evaluated with hit rate and
-  MRR against LLM-generated ground-truth questions (`src/generate_ground_truth.py`).
-  Results saved to `data/retrieval_eval.json`. **Hybrid search is used in
-  production** based on these results.
+  MRR against LLM-generated ground-truth questions (`src/generate_ground_truth.py` using structured output).
+  Results saved to `data/retrieval_eval.json`.
+  - **Text Search**: Hit rate: 64.9% | MRR: 0.547
+  - **Vector Search (ONNX)**: Hit rate: 90.5% | MRR: 0.785
+  - **Hybrid Search**: Hit rate: 91.0% | MRR: 0.711
+  Vector search drastically outperformed text search and is considered the best standalone method.
 - **LLM evaluation**: two prompt variants are compared (see `src/evaluate_llm.py`)
-  for answer relevance/faithfulness — the better prompt is used in `app/main.py`.
+  for answer relevance/faithfulness. With stratified sampling on the evaluation set, both prompts achieved **96.6% relevance**. The better prompt is used in `app/main.py`.
 
 ## Setup
 
@@ -54,12 +57,17 @@ ingest.py  -->  data/docs.json  -->  search.py (text / vector / hybrid RRF)
    ```bash
    uv run python src/ingest.py
    ```
-5. Generate ground truth and run retrieval evaluation:
+5. Download the ONNX embedding model:
+   ```bash
+   uv run python src/download_model.py
+   ```
+6. Generate ground truth and run retrieval evaluation:
    ```bash
    uv run python src/generate_ground_truth.py
    uv run python src/evaluate.py
+   uv run python src/evaluate_llm.py
    ```
-6. Run the app:
+7. Run the app:
    ```bash
    uv run uvicorn app.main:app --reload
    ```
@@ -67,19 +75,19 @@ ingest.py  -->  data/docs.json  -->  search.py (text / vector / hybrid RRF)
    ```bash
    docker compose up --build
    ```
-7. Open http://localhost:8000 to ask questions, and
+8. Open http://localhost:8000 to ask questions, and
    http://localhost:8000/static/dashboard.html for the monitoring dashboard.
 
 ## Interface
 
-FastAPI backend with a plain HTML/JS frontend (`static/index.html`) — no
-framework lock-in, runs anywhere `uvicorn` runs.
+FastAPI backend with a bespoke "The Crate" HTML/JS frontend (`static/index.html`).
+It features a premium vinyl record player animation to simulate crate-digging, runs anywhere `uvicorn` runs without framework lock-in.
 
 ## Monitoring
 
 Every query is logged to `data/logs.db` (SQLite) with response time, retrieval
-method, and user feedback (👍/👎). `static/dashboard.html` renders 5 charts:
-question volume, feedback distribution, response time per query, retrieval
+method, and user feedback (👍/👎). `static/dashboard.html` renders 6 charts:
+question volume, estimated daily API cost, feedback distribution, response time per query, retrieval
 method breakdown, and feedback over time.
 
 ## Containerization
@@ -93,5 +101,5 @@ method breakdown, and feedback over time.
 
 ## Tech stack
 
-Python, FastAPI, `minsearch` (text + TF-IDF vector search), OpenAI
+Python, FastAPI, `minsearch` (text), `onnxruntime` (`Xenova/bge-small-en-v1.5` embeddings), OpenAI
 (`gpt-5.4-mini`), SQLite, Docker.

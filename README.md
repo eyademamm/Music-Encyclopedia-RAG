@@ -1,4 +1,4 @@
-# 🎵 Music Encyclopedia RAG
+# 🎵 The Crate
 
 An end-to-end RAG application that answers questions about music artists, bands,
 and genres, built for the LLM Zoomcamp final project.

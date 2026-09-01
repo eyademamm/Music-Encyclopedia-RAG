@@ -2,128 +2,230 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>The Crate</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
+  /* ========== PALETTE ========== */
   :root {
-    --bg-deep:        #1a1410;
-    --bg-surface:     #2a2118;
-    --bg-surface-alt: #352c22;
-    --accent-amber:   #d4943a;
-    --accent-orange:  #e8732a;
-    --accent-gold:    #f0c060;
-    --text-primary:   #ece4d8;
-    --text-secondary: #a0937e;
-    --text-muted:     #6b5f50;
-    --vinyl-black:    #111111;
-    --vinyl-groove:   #222222;
-    --vinyl-label:    var(--accent-amber);
-    --border:         #3a3028;
-    --shadow:         rgba(0,0,0,0.4);
+    --bg-deep:          #0f0c0c;
+    --bg-surface:       #1a1416;
+    --bg-surface-alt:   #241c1f;
+    --accent-primary:   #8b2252;
+    --accent-secondary: #c4727a;
+    --accent-hover:     #a03060;
+    --accent-glow:      rgba(139, 34, 82, 0.3);
+    --text-primary:     #f8f0e3;
+    --text-secondary:   #c4b5a5;
+    --text-muted:       #7a6b60;
+    --border:           #2e2224;
+    --shadow:           rgba(0, 0, 0, 0.5);
+    --error-red:        #d94444;
+    --success-green:    #5a9a5a;
   }
+
+  /* ========== RESET & BASE ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
     font-family: 'Inter', sans-serif;
-    max-width: 680px;
-    margin: 60px auto;
-    padding: 0 20px;
-    background: var(--bg-deep);
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+    min-height: 100vh;
     color: var(--text-primary);
-    background-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 80%);
-  }
-  
-  h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 32px;
-    margin-bottom: 5px;
-    color: var(--accent-gold);
-  }
-  .subtitle {
-    color: var(--text-secondary);
-    margin-top: 0;
-    margin-bottom: 30px;
+
+    /* Wood-grain textured background */
+    background-color: var(--bg-deep);
+    background-image:
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 40px,
+        rgba(255,255,255,0.008) 40px,
+        rgba(255,255,255,0.008) 41px
+      ),
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(80,40,30,0.06) 2px,
+        rgba(80,40,30,0.06) 4px
+      ),
+      radial-gradient(ellipse at 50% 0%, rgba(139,34,82,0.06) 0%, transparent 70%);
   }
 
-  input {
-    width: 100%;
-    padding: 16px;
+  /* ========== HEADER ========== */
+  .header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .header-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .vinyl-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .subtitle {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
     font-size: 16px;
+    color: var(--accent-secondary);
+    margin-top: 6px;
+  }
+
+  /* ========== SEARCH BAR ========== */
+  .search-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .search-input {
+    flex: 1;
+    padding: 16px 20px;
+    font-size: 15px;
     font-family: 'Inter', sans-serif;
-    border-radius: 8px;
+    border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--bg-surface);
     color: var(--text-primary);
-    box-sizing: border-box;
     box-shadow: inset 0 2px 4px var(--shadow);
+    transition: border-color 0.3s, box-shadow 0.3s;
   }
-  input:focus {
+  .search-input::placeholder {
+    color: var(--text-muted);
+  }
+  .search-input:focus {
     outline: none;
-    border-color: var(--accent-amber);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-glow), inset 0 2px 4px var(--shadow);
+  }
+  .search-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
-  button.ask-btn {
-    margin-top: 16px;
-    padding: 12px 24px;
-    font-size: 16px;
+  /* ========== DROP THE NEEDLE BUTTON ========== */
+  .needle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 22px;
+    font-size: 15px;
     font-weight: 600;
-    border-radius: 8px;
-    border: none;
-    background: var(--accent-amber);
-    color: #111;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
     font-family: 'Inter', sans-serif;
+    border-radius: 28px;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--text-primary);
+    background: var(--accent-primary);
+    box-shadow:
+      0 4px 12px rgba(139, 34, 82, 0.4),
+      0 2px 4px rgba(0,0,0,0.3),
+      inset 0 1px 1px rgba(255,255,255,0.1);
+    transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
   }
-  button.ask-btn:hover {
-    background: var(--accent-orange);
+  .needle-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow:
+      0 6px 18px rgba(139, 34, 82, 0.5),
+      0 3px 6px rgba(0,0,0,0.3),
+      inset 0 1px 1px rgba(255,255,255,0.12);
   }
-  button.ask-btn:active {
-    transform: translateY(1px);
+  .needle-btn:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow:
+      0 1px 4px rgba(139, 34, 82, 0.3),
+      inset 0 2px 4px rgba(0,0,0,0.3);
+  }
+  .needle-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .needle-btn svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
   }
 
-  /* Vinyl Animation */
+  /* ========== EXAMPLE CHIPS ========== */
+  .chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .chips-container.hidden { display: none; }
+
+  .chip {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    color: var(--accent-secondary);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .chip:hover {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+    background: var(--bg-surface-alt);
+  }
+
+  /* ========== VINYL LOADING ANIMATION ========== */
   .vinyl-container {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-top: 40px;
+    margin: 40px 0;
     position: relative;
     height: 200px;
   }
-  .vinyl-container.hidden {
-    display: none;
-  }
+  .vinyl-container.hidden { display: none; }
 
   .vinyl-record {
-    width: 160px;
-    height: 160px;
+    width: 150px;
+    height: 150px;
     border-radius: 50%;
     background: repeating-radial-gradient(
       circle at center,
-      var(--vinyl-black) 0px,
-      var(--vinyl-groove) 1px,
-      var(--vinyl-black) 4px
+      #111 0px,
+      #1a1a1a 1px,
+      #111 4px
     );
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 20px var(--shadow);
+    box-shadow: 0 8px 24px var(--shadow);
   }
-  
   .vinyl-label {
-    width: 55px;
-    height: 55px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    background: var(--vinyl-label);
+    background: radial-gradient(circle, var(--accent-primary), #6b1a40);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid #fff;
+    border: 2px solid rgba(255,255,255,0.15);
   }
   .vinyl-hole {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: #000;
   }
@@ -131,7 +233,6 @@
   .vinyl-container.spinning .vinyl-record {
     animation: spin 1.8s linear infinite;
   }
-
   @keyframes spin {
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
@@ -139,144 +240,222 @@
 
   .tonearm {
     position: absolute;
-    top: 10px;
-    right: calc(50% - 120px);
-    width: 40px;
-    height: 140px;
-    transform-origin: 20px 20px;
+    top: 8px;
+    right: calc(50% - 115px);
+    width: 36px;
+    height: 130px;
+    transform-origin: 18px 18px;
     transform: rotate(-30deg);
     z-index: 10;
   }
   .tonearm-base {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background: #444;
-    border: 3px solid #222;
+    background: #3a3a3a;
+    border: 2px solid #222;
     position: absolute;
     top: 0;
     left: 0;
   }
   .tonearm-arm {
-    width: 8px;
-    height: 120px;
-    background: silver;
+    width: 6px;
+    height: 110px;
+    background: linear-gradient(to bottom, #c0c0c0, #888);
     position: absolute;
-    top: 20px;
-    left: 16px;
-    border-radius: 4px;
+    top: 18px;
+    left: 15px;
+    border-radius: 3px;
   }
   .tonearm-head {
-    width: 14px;
-    height: 24px;
+    width: 12px;
+    height: 20px;
     background: #222;
     position: absolute;
-    bottom: -10px;
-    left: 13px;
+    bottom: -8px;
+    left: 12px;
     transform: rotate(20deg);
+    border-radius: 1px;
   }
 
   .vinyl-container.spinning .tonearm {
     animation: lower-needle 0.8s ease-out forwards;
   }
-
   @keyframes lower-needle {
     from { transform: rotate(-30deg); }
     to   { transform: rotate(-5deg); }
   }
-  
+
   .loading-text {
     text-align: center;
-    margin-top: 16px;
-    color: var(--text-secondary);
+    margin-top: -20px;
+    margin-bottom: 20px;
+    color: var(--accent-secondary);
     font-style: italic;
+    font-size: 14px;
   }
-  .loading-text.hidden {
-    display: none;
-  }
+  .loading-text.hidden { display: none; }
 
-  /* Answer Card */
+  /* ========== ANSWER CARD ========== */
   #answer-container {
     display: none;
-    margin-top: 30px;
+    margin-top: 8px;
   }
+  #answer-container.visible {
+    display: block;
+    animation: fadeSlideIn 0.5s ease-out;
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   #answer-card {
     background: var(--bg-surface);
-    border-radius: 12px;
-    padding: 28px;
-    border-top: 4px solid var(--accent-amber);
-    box-shadow: 0 4px 12px var(--shadow);
-    margin-bottom: 24px;
+    border-radius: 14px;
+    padding: 28px 28px 24px;
+    border-left: 4px solid var(--accent-primary);
+    box-shadow: 0 4px 16px var(--shadow);
+    margin-bottom: 20px;
+    position: relative;
+
+    /* Subtle paper-grain texture */
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(255,255,255,0.005) 3px,
+        rgba(255,255,255,0.005) 4px
+      );
   }
   .liner-notes-label {
     font-family: 'Inter', sans-serif;
     font-size: 11px;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: var(--accent-amber);
-    margin-bottom: 12px;
-  }
-  #answer {
-    font-family: 'Playfair Display', serif;
-    font-size: 17px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    color: var(--text-primary);
+    color: var(--accent-secondary);
+    margin-bottom: 16px;
   }
 
-  /* Source Cards */
+  /* ========== MARKDOWN CONTENT ========== */
+  #answer {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text-primary);
+  }
+  #answer h1, #answer h2, #answer h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--text-primary);
+    margin-top: 1em;
+    margin-bottom: 0.4em;
+  }
+  #answer h1 { font-size: 1.4em; }
+  #answer h2 { font-size: 1.2em; }
+  #answer h3 { font-size: 1.05em; }
+  #answer p {
+    margin-bottom: 0.8em;
+  }
+  #answer strong {
+    color: #fff;
+  }
+  #answer em {
+    color: var(--accent-secondary);
+  }
+  #answer ul, #answer ol {
+    padding-left: 1.5em;
+    margin-bottom: 0.8em;
+  }
+  #answer li {
+    margin-bottom: 0.3em;
+  }
+  #answer li::marker {
+    color: var(--accent-secondary);
+  }
+  #answer code {
+    font-family: 'Courier New', monospace;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  #answer a {
+    color: var(--accent-secondary);
+    text-decoration: none;
+  }
+  #answer a:hover {
+    text-decoration: underline;
+  }
+
+  /* Typing cursor */
+  #answer.typing::after {
+    content: '▌';
+    color: var(--accent-secondary);
+    animation: blink 0.8s step-end infinite;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* ========== SOURCE PILLS ========== */
   .sources-section {
-    margin-top: 20px;
+    margin-top: 16px;
   }
   .sources-title {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     margin-bottom: 10px;
+    font-weight: 500;
   }
   #sources {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
   }
-  .source-card {
+  .source-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     background: var(--bg-surface-alt);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-family: 'Playfair Display', serif;
-    font-size: 14px;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
     color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: transform 0.2s, border-color 0.2s, color 0.2s;
+    transition: border-color 0.2s, color 0.2s;
   }
-  .source-card:hover {
-    transform: scale(1.05);
-    border-color: var(--accent-amber);
+  .source-pill:hover {
+    border-color: var(--accent-primary);
     color: var(--text-primary);
   }
-  .source-icon {
-    width: 12px;
-    height: 12px;
+  .source-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: #111;
-    border: 1px solid #444;
-    display: inline-block;
+    background: var(--accent-primary);
+    border: 1px solid var(--accent-secondary);
+    flex-shrink: 0;
   }
 
-  /* Feedback */
+  /* ========== FEEDBACK ========== */
   .fb {
-    margin-top: 24px;
+    margin-top: 20px;
     display: flex;
-    gap: 12px;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
   }
+  .fb.visible { opacity: 1; }
+
   .fb button {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 10px 16px;
     color: var(--text-secondary);
     cursor: pointer;
@@ -284,33 +463,124 @@
     font-family: 'Inter', sans-serif;
     display: flex;
     align-items: center;
-    gap: 8px;
-    box-shadow: 0 4px 6px var(--shadow), inset 0 1px 1px rgba(255,255,255,0.05);
+    gap: 6px;
+    box-shadow: 0 2px 6px var(--shadow), inset 0 1px 1px rgba(255,255,255,0.04);
     transition: all 0.2s;
   }
   .fb button:hover {
-    color: var(--accent-amber);
-    border-color: var(--accent-amber);
+    color: var(--accent-secondary);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-glow);
   }
   .fb button:active {
-    box-shadow: inset 0 3px 6px var(--shadow);
-    transform: translateY(2px);
+    box-shadow: inset 0 2px 6px var(--shadow);
+    transform: translateY(1px);
   }
   #fb-thanks {
-    margin-top: 24px;
-    color: var(--accent-amber);
+    margin-top: 20px;
+    color: var(--accent-secondary);
     font-style: italic;
+    font-size: 14px;
     display: none;
+  }
+
+  /* ========== TOAST NOTIFICATION ========== */
+  .toast {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    max-width: 380px;
+    padding: 16px 20px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--error-red);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px var(--shadow);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    z-index: 1000;
+    animation: toastIn 0.3s ease-out;
+  }
+  .toast.fade-out {
+    animation: toastOut 0.3s ease-in forwards;
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(40px); }
+  }
+  .toast-msg { flex: 1; line-height: 1.4; }
+  .toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+  .toast-close:hover { color: var(--text-primary); }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 600px) {
+    body { padding: 24px 16px 40px; }
+    .header-title { font-size: 28px; }
+    .search-bar { flex-direction: column; }
+    .needle-btn { width: 100%; justify-content: center; }
+    .chips-container { justify-content: center; }
+    #answer-card { padding: 20px 18px; }
   }
 </style>
 </head>
 <body>
-  <h1>The Crate</h1>
-  <p class="subtitle">Dig through the stacks. Ask anything about music.</p>
-  
-  <input id="q" placeholder="What's on your mind? Dig into any artist, genre, or era..." />
-  <button class="ask-btn" onclick="ask()">Drop the Needle</button>
-  
+
+  <!-- ====== HEADER ====== -->
+  <div class="header">
+    <div class="header-title">
+      <svg class="vinyl-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="48" stroke="var(--text-secondary)" stroke-width="2" fill="#111"/>
+        <circle cx="50" cy="50" r="38" stroke="var(--text-muted)" stroke-width="0.5" fill="none"/>
+        <circle cx="50" cy="50" r="30" stroke="var(--text-muted)" stroke-width="0.5" fill="none"/>
+        <circle cx="50" cy="50" r="22" stroke="var(--text-muted)" stroke-width="0.5" fill="none"/>
+        <circle cx="50" cy="50" r="16" fill="var(--accent-primary)" stroke="var(--accent-secondary)" stroke-width="1"/>
+        <circle cx="50" cy="50" r="4" fill="#0f0c0c"/>
+      </svg>
+      The Crate
+    </div>
+    <p class="subtitle">Dig through the stacks</p>
+  </div>
+
+  <!-- ====== SEARCH BAR ====== -->
+  <div class="search-bar">
+    <input class="search-input" id="q" placeholder="Ask about any artist, genre, or era..." />
+    <button class="needle-btn" id="ask-btn" onclick="ask()">
+      <!-- Tonearm / needle icon -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="16" r="5" fill="none"/>
+        <circle cx="8" cy="16" r="1.5" fill="currentColor" stroke="none"/>
+        <line x1="12" y1="13" x2="20" y2="3"/>
+        <circle cx="20.5" cy="2.5" r="1.5" fill="none"/>
+      </svg>
+      Drop the Needle
+    </button>
+  </div>
+
+  <!-- ====== EXAMPLE CHIPS ====== -->
+  <div class="chips-container" id="chips">
+    <button class="chip" onclick="askChip(this)">Who were the members of Pink Floyd?</button>
+    <button class="chip" onclick="askChip(this)">How did hip hop originate?</button>
+    <button class="chip" onclick="askChip(this)">What genre did Fela Kuti pioneer?</button>
+    <button class="chip" onclick="askChip(this)">Tell me about the history of jazz</button>
+  </div>
+
+  <!-- ====== VINYL LOADING ANIMATION ====== -->
   <div id="vinyl-container" class="vinyl-container hidden">
     <div class="vinyl-record">
       <div class="vinyl-label"><div class="vinyl-hole"></div></div>
@@ -323,17 +593,18 @@
   </div>
   <div id="loading-text" class="loading-text hidden">Spinning up...</div>
 
+  <!-- ====== ANSWER ====== -->
   <div id="answer-container">
     <div id="answer-card">
       <div class="liner-notes-label">Liner Notes</div>
       <div id="answer"></div>
     </div>
-    
+
     <div class="sources-section">
-      <div class="sources-title">From the collection:</div>
+      <div class="sources-title">From the collection</div>
       <div id="sources"></div>
     </div>
-    
+
     <div class="fb" id="fb">
       <button onclick="sendFeedback(1)">👍 Solid track</button>
       <button onclick="sendFeedback(-1)">👎 Skip</button>
@@ -342,83 +613,209 @@
   </div>
 
 <script>
+// ========== STATE ==========
 let lastInteractionId = null;
+let typewriterAbort = false;
 
 const loadingPhrases = [
-  "Spinning up...",
-  "Flipping through the crates...",
-  "Pulling a deep cut...",
-  "Dusting off the vinyl..."
+  "Spinning up…",
+  "Flipping through the crates…",
+  "Pulling a deep cut…",
+  "Dusting off the vinyl…",
+  "Queuing up the B-side…"
 ];
 
+// ========== MARKDOWN SETUP ==========
+marked.setOptions({
+  breaks: true,
+  gfm: true
+});
+
+// ========== TYPEWRITER ==========
+async function typewriterEffect(text, element, speed = 12) {
+  typewriterAbort = false;
+  element.classList.add('typing');
+  let displayed = '';
+
+  for (let i = 0; i < text.length; i++) {
+    if (typewriterAbort) break;
+    displayed += text[i];
+    element.innerHTML = marked.parse(displayed);
+    // Variable speed: pause longer after punctuation
+    const char = text[i];
+    let delay = speed;
+    if (char === '.' || char === '!' || char === '?') delay = speed * 4;
+    else if (char === ',') delay = speed * 2;
+    else if (char === '\n') delay = speed * 3;
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  element.classList.remove('typing');
+  element.innerHTML = marked.parse(text);
+}
+
+// ========== TOAST ==========
+function showToast(message) {
+  // Remove existing toasts
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <span class="toast-msg">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.body.appendChild(toast);
+
+  // Auto-dismiss after 6s
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 6000);
+}
+
+// ========== LOADING STATE ==========
+function setLoading(loading) {
+  const btn = document.getElementById('ask-btn');
+  const input = document.getElementById('q');
+
+  if (loading) {
+    btn.disabled = true;
+    input.disabled = true;
+    btn.innerHTML = '⏳ Searching…';
+  } else {
+    btn.disabled = false;
+    input.disabled = false;
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="16" r="5" fill="none"/>
+        <circle cx="8" cy="16" r="1.5" fill="currentColor" stroke="none"/>
+        <line x1="12" y1="13" x2="20" y2="3"/>
+        <circle cx="20.5" cy="2.5" r="1.5" fill="none"/>
+      </svg>
+      Drop the Needle
+    `;
+    input.focus();
+  }
+}
+
+// ========== CHIPS ==========
+function askChip(chipEl) {
+  document.getElementById('q').value = chipEl.textContent;
+  ask();
+}
+
+// ========== ASK ==========
 async function ask() {
-  const question = document.getElementById('q').value.trim();
+  const input = document.getElementById('q');
+  const question = input.value.trim();
   if (!question) return;
-  
-  // Show animation
+
+  // Abort any running typewriter
+  typewriterAbort = true;
+
+  // Hide chips after first question
+  document.getElementById('chips').classList.add('hidden');
+
+  // Loading state
+  setLoading(true);
+
+  // Show vinyl animation
   const vinylContainer = document.getElementById('vinyl-container');
   const loadingText = document.getElementById('loading-text');
-  
+
   vinylContainer.classList.remove('hidden');
   vinylContainer.classList.add('spinning');
-  
   loadingText.classList.remove('hidden');
   loadingText.innerText = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
-  
+
   // Hide previous answer
-  document.getElementById('answer-container').style.display = 'none';
-  document.getElementById('fb').style.display = 'flex';
+  const answerContainer = document.getElementById('answer-container');
+  answerContainer.classList.remove('visible');
+  answerContainer.style.display = 'none';
+  document.getElementById('fb').classList.remove('visible');
   document.getElementById('fb-thanks').style.display = 'none';
-  
+
   try {
     const res = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question })
     });
+
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+
     const data = await res.json();
-    
+
     // Stop animation
     vinylContainer.classList.remove('spinning');
-    setTimeout(() => {
+    setTimeout(async () => {
       vinylContainer.classList.add('hidden');
       loadingText.classList.add('hidden');
-      
-      // Render answer
-      document.getElementById('answer').innerText = data.answer;
-      
-      // Render sources as cards
-      const sourcesHtml = data.sources.map(src => 
-        `<div class="source-card"><span class="source-icon"></span>${src}</div>`
+      setLoading(false);
+
+      // Show answer container
+      answerContainer.style.display = 'block';
+      // Trigger reflow for animation
+      void answerContainer.offsetWidth;
+      answerContainer.classList.add('visible');
+
+      // Render sources
+      const sourcesHtml = data.sources.map(src =>
+        `<span class="source-pill"><span class="source-dot"></span>${src}</span>`
       ).join('');
       document.getElementById('sources').innerHTML = sourcesHtml;
-      
+
       lastInteractionId = data.interaction_id;
-      document.getElementById('answer-container').style.display = 'block';
-    }, 600); // Wait a bit for the arm to return
-    
+
+      // Typewriter the answer
+      const answerEl = document.getElementById('answer');
+      answerEl.innerHTML = '';
+      await typewriterEffect(data.answer, answerEl);
+
+      // Fade in feedback buttons
+      document.getElementById('fb').classList.add('visible');
+    }, 600);
+
   } catch (err) {
     console.error(err);
     vinylContainer.classList.remove('spinning');
     setTimeout(() => {
       vinylContainer.classList.add('hidden');
-      loadingText.innerText = "Error reading record.";
-    }, 600);
+      loadingText.classList.add('hidden');
+      setLoading(false);
+    }, 400);
+
+    if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+      showToast("Couldn't reach the server — is the backend running?");
+    } else {
+      showToast(`Something went wrong: ${err.message}`);
+    }
   }
 }
 
+// ========== FEEDBACK ==========
 async function sendFeedback(value) {
   if (!lastInteractionId) return;
-  await fetch('/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ interaction_id: lastInteractionId, feedback: value })
-  });
-  document.getElementById('fb').style.display = 'none';
+  try {
+    await fetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interaction_id: lastInteractionId, feedback: value })
+    });
+  } catch (_) { /* silent */ }
+  document.getElementById('fb').classList.remove('visible');
   document.getElementById('fb-thanks').style.display = 'block';
 }
 
-document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+// ========== KEYBOARD ==========
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.target.disabled) ask();
+});
 </script>
 </body>
 </html>

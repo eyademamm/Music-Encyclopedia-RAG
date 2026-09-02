@@ -1,9 +1,13 @@
+import json
 import os
 import sqlite3
 import sys
 import time
 import uuid
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,10 +17,11 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
-from search import build_text_index, build_vector_index, hybrid_search, load_docs  # noqa: E402
+from search import build_text_index, build_vector_index, load_docs  # noqa: E402
+from tools import TOOL_DEFINITIONS, execute_tool                     # noqa: E402
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "logs.db"
-MODEL = "gpt-5.4-mini"
+MODEL   = "gpt-4o-mini"
 
 app = FastAPI(title="Music Encyclopedia RAG")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -24,10 +29,19 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY") or "sk-placeholder-set-env-var")
 
 # --- build indexes once at startup ---
-docs = load_docs()
-text_index = build_text_index(docs)
+docs         = load_docs()
+text_index   = build_text_index(docs)
 vector_index, embedder = build_vector_index(docs)
 
+# Shared context passed to tool dispatch
+_tool_context = {
+    "text_index":   text_index,
+    "vector_index": vector_index,
+    "embedder":     embedder,
+}
+
+
+# ── DB ────────────────────────────────────────────────────────────────────────
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -43,14 +57,16 @@ def init_db():
             created_at REAL,
             prompt_tokens INTEGER DEFAULT 0,
             completion_tokens INTEGER DEFAULT 0,
-            cost REAL DEFAULT 0.0
+            cost REAL DEFAULT 0.0,
+            tools_used TEXT DEFAULT ''
         )
     """)
-    # Migrate existing databases that lack the new columns
+    # Migrate existing databases that may lack newer columns
     for col, col_type, default in [
-        ("prompt_tokens", "INTEGER", "0"),
+        ("prompt_tokens",     "INTEGER", "0"),
         ("completion_tokens", "INTEGER", "0"),
-        ("cost", "REAL", "0.0"),
+        ("cost",              "REAL",    "0.0"),
+        ("tools_used",        "TEXT",    "''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE logs ADD COLUMN {col} {col_type} DEFAULT {default}")
@@ -63,6 +79,8 @@ def init_db():
 init_db()
 
 
+# ── Request/Response models ───────────────────────────────────────────────────
+
 class AskRequest(BaseModel):
     question: str
 
@@ -72,68 +90,144 @@ class FeedbackRequest(BaseModel):
     feedback: int  # 1 = thumbs up, -1 = thumbs down
 
 
-PROMPT_TEMPLATE = """\
-You are a knowledgeable music encyclopedia assistant. Answer the QUESTION
-using only the CONTEXT below. If the context doesn't contain the answer,
-say you don't have enough information.
+# ── System prompt ─────────────────────────────────────────────────────────────
 
-CONTEXT:
-{context}
+SYSTEM_PROMPT = """\
+You are "The Crate" — a knowledgeable, warm music encyclopedia assistant with a love for vinyl records and music history.
+You have access to tools to look up information. Always ground your answers in tool results — never make up facts.
 
-QUESTION: {question}
+## Tool strategy
+1. **local_search** first — use it for any music question. It covers well-known artists, genres, and bands.
+2. **wikipedia_search** — use when local_search returns insufficient results, or for lesser-known artists, specific albums, record labels, music theory, etc.
+3. **lyrics_search** — use when the user asks for lyrics, wants to know what a song is about, or asks to quote or analyse a song.
+4. You may call **multiple tools** in sequence if building a complete answer requires it.
+
+## Rules
+- Base your answer entirely on tool results. If no tool returns relevant information, say so honestly.
+- Format answers with **markdown** (bold, bullet lists, headings) for readability.
+- Be warm and conversational — you love music and it shows.
+- Keep answers thorough but concise; avoid padding.
 """
 
 
-def build_context(chunks):
-    return "\n\n".join(f"[{c['topic']}] {c['chunk']}" for c in chunks)
+# ── Agentic loop ──────────────────────────────────────────────────────────────
+
+def agentic_answer(question: str):
+    """
+    Run the ReAct agentic loop:
+    1. Send question to LLM with tool definitions
+    2. If the LLM calls a tool, execute it and loop back
+    3. Repeat until the LLM produces a final text answer (max 5 iterations)
+
+    Returns:
+        (answer, sources, prompt_tokens, completion_tokens, cost, tools_used)
+    """
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user",   "content": question},
+    ]
+
+    total_prompt_tokens     = 0
+    total_completion_tokens = 0
+    sources: list[str]      = []
+    tools_called: list[str] = []
+
+    MAX_ITERATIONS = 5
+
+    for iteration in range(MAX_ITERATIONS):
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+        )
+
+        usage = resp.usage
+        if usage:
+            total_prompt_tokens     += usage.prompt_tokens
+            total_completion_tokens += usage.completion_tokens
+
+        msg = resp.choices[0].message
+
+        # No more tool calls — we have the final answer
+        if not msg.tool_calls:
+            answer = msg.content or ""
+            break
+
+        # Append the assistant's tool-call message
+        messages.append(msg)
+
+        # Execute each tool call and append results
+        for tool_call in msg.tool_calls:
+            name = tool_call.function.name
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+
+            result, source = execute_tool(name, arguments, _tool_context)
+
+            if name not in tools_called:
+                tools_called.append(name)
+            if source and source not in sources:
+                sources.append(source)
+
+            messages.append({
+                "role":         "tool",
+                "tool_call_id": tool_call.id,
+                "content":      result,
+            })
+    else:
+        # Safety: max iterations reached — ask for a final answer without tools
+        messages.append({"role": "user", "content": "Please provide your final answer now."})
+        resp = client.chat.completions.create(model=MODEL, messages=messages)
+        usage = resp.usage
+        if usage:
+            total_prompt_tokens     += usage.prompt_tokens
+            total_completion_tokens += usage.completion_tokens
+        answer = resp.choices[0].message.content or ""
+
+    # Cost formula: gpt-4o-mini  input $0.15/1M tokens, output $0.60/1M tokens
+    cost = (total_prompt_tokens * 0.15 + total_completion_tokens * 0.60) / 1_000_000
+
+    return answer, sources, total_prompt_tokens, total_completion_tokens, cost, tools_called
 
 
-def rag_answer(question: str):
-    chunks = hybrid_search(text_index, vector_index, embedder, question, num_results=5)
-    prompt = PROMPT_TEMPLATE.format(context=build_context(chunks), question=question)
-
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    answer = resp.choices[0].message.content
-
-    # Extract real token usage from OpenAI response
-    usage = resp.usage
-    prompt_tokens = usage.prompt_tokens if usage else 0
-    completion_tokens = usage.completion_tokens if usage else 0
-    # Cost formula: input $0.75/1M tokens, output $4.50/1M tokens
-    cost = (prompt_tokens * 0.75 + completion_tokens * 4.50) / 1_000_000
-
-    return answer, chunks, prompt_tokens, completion_tokens, cost
-
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.post("/ask")
 def ask(req: AskRequest):
     start = time.time()
-    answer, chunks, prompt_tokens, completion_tokens, cost = rag_answer(req.question)
+    answer, sources, prompt_tokens, completion_tokens, cost, tools_called = agentic_answer(req.question)
     elapsed = time.time() - start
 
     interaction_id = str(uuid.uuid4())
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        "INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (interaction_id, req.question, answer, "hybrid", len(chunks), elapsed, None, time.time(),
-         prompt_tokens, completion_tokens, cost),
+        "INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            interaction_id,
+            req.question,
+            answer,
+            "agentic",
+            len(sources),
+            elapsed,
+            None,
+            time.time(),
+            prompt_tokens,
+            completion_tokens,
+            cost,
+            ",".join(tools_called),
+        ),
     )
     conn.commit()
     conn.close()
 
-    seen_sources = []
-    for c in chunks:
-        if c["topic"] not in seen_sources:
-            seen_sources.append(c["topic"])
-
     return {
         "interaction_id": interaction_id,
-        "answer": answer,
-        "sources": seen_sources,
-        "response_time": elapsed,
+        "answer":         answer,
+        "sources":        sources,
+        "response_time":  elapsed,
+        "tools_used":     tools_called,
     }
 
 
@@ -152,7 +246,6 @@ def stats():
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute("SELECT * FROM logs ORDER BY created_at DESC").fetchall()]
 
-    # Aggregate real per-row cost by day
     from collections import defaultdict
     from datetime import datetime
 
@@ -173,3 +266,4 @@ app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent.paren
 @app.get("/")
 def root():
     return FileResponse(Path(__file__).resolve().parent.parent / "static" / "index.html")
+

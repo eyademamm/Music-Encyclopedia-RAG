@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>The Crate</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@18.0.11/lib/marked.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.14/dist/purify.min.js"></script>
 <style>
   /* ========== PALETTE ========== */
   :root {
@@ -631,6 +632,28 @@ marked.setOptions({
   gfm: true
 });
 
+const markdownSanitizerOptions = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li', 'blockquote',
+    'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table',
+    'thead', 'tbody', 'tr', 'th', 'td'
+  ],
+  ALLOWED_ATTR: ['href', 'title'],
+  RETURN_DOM_FRAGMENT: true
+};
+
+function renderMarkdownSafely(text, element) {
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    // Fail closed if either CDN dependency is unavailable.
+    element.textContent = text;
+    return;
+  }
+
+  const parsed = marked.parse(text);
+  const sanitized = DOMPurify.sanitize(parsed, markdownSanitizerOptions);
+  element.replaceChildren(sanitized);
+}
+
 // ========== TYPEWRITER ==========
 async function typewriterEffect(text, element, speed = 12) {
   typewriterAbort = false;
@@ -640,7 +663,7 @@ async function typewriterEffect(text, element, speed = 12) {
   for (let i = 0; i < text.length; i++) {
     if (typewriterAbort) break;
     displayed += text[i];
-    element.innerHTML = marked.parse(displayed);
+    renderMarkdownSafely(displayed, element);
     // Variable speed: pause longer after punctuation
     const char = text[i];
     let delay = speed;
@@ -651,7 +674,7 @@ async function typewriterEffect(text, element, speed = 12) {
   }
 
   element.classList.remove('typing');
-  element.innerHTML = marked.parse(text);
+  renderMarkdownSafely(text, element);
 }
 
 // ========== TOAST ==========
@@ -661,10 +684,18 @@ function showToast(message) {
 
   const toast = document.createElement('div');
   toast.className = 'toast';
-  toast.innerHTML = `
-    <span class="toast-msg">${message}</span>
-    <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
-  `;
+
+  const messageEl = document.createElement('span');
+  messageEl.className = 'toast-msg';
+  messageEl.textContent = String(message);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'toast-close';
+  closeBtn.type = 'button';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => toast.remove());
+
+  toast.append(messageEl, closeBtn);
   document.body.appendChild(toast);
 
   // Auto-dismiss after 6s
@@ -674,6 +705,20 @@ function showToast(message) {
       setTimeout(() => toast.remove(), 300);
     }
   }, 6000);
+}
+
+function renderSources(sources, element) {
+  element.replaceChildren();
+  sources.forEach(src => {
+    const pill = document.createElement('span');
+    pill.className = 'source-pill';
+
+    const dot = document.createElement('span');
+    dot.className = 'source-dot';
+
+    pill.append(dot, document.createTextNode(String(src)));
+    element.appendChild(pill);
+  });
 }
 
 // ========== LOADING STATE ==========
@@ -729,7 +774,7 @@ async function ask() {
   vinylContainer.classList.remove('hidden');
   vinylContainer.classList.add('spinning');
   loadingText.classList.remove('hidden');
-  loadingText.innerText = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
+  loadingText.textContent = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
 
   // Hide previous answer
   const answerContainer = document.getElementById('answer-container');
@@ -765,16 +810,14 @@ async function ask() {
       answerContainer.classList.add('visible');
 
       // Render sources
-      const sourcesHtml = data.sources.map(src =>
-        `<span class="source-pill"><span class="source-dot"></span>${src}</span>`
-      ).join('');
-      document.getElementById('sources').innerHTML = sourcesHtml;
+      const sourcesEl = document.getElementById('sources');
+      renderSources(data.sources, sourcesEl);
 
       lastInteractionId = data.interaction_id;
 
       // Typewriter the answer
       const answerEl = document.getElementById('answer');
-      answerEl.innerHTML = '';
+      answerEl.replaceChildren();
       await typewriterEffect(data.answer, answerEl);
 
       // Fade in feedback buttons

@@ -25,7 +25,8 @@ from search import build_text_index, build_vector_index, load_docs  # noqa: E402
 from tools import (TOOL_DEFINITIONS, ExternalToolServiceError,
                    execute_tool)                                     # noqa: E402
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "logs.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "logs.db"
+DB_PATH = Path(os.environ.get("MUSIC_RAG_DB_PATH", DEFAULT_DB_PATH))
 MODEL   = "gpt-4o-mini"
 MAX_QUESTION_LENGTH = 2_000
 MAX_INTERACTION_ID_LENGTH = 64

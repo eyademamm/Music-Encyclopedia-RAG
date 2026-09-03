@@ -1,8 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
-data/*.json
+data/*
+!data/.gitkeep
+!data/docs.json
+!data/embeddings.npy
 data/*.db
-data/*.npy
 .env
 models/

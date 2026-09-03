@@ -4,6 +4,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env before starting Docker.}
+      MUSIC_RAG_DB_PATH: /code/runtime/logs.db
     volumes:
-      - ./data:/code/data
+      - app_runtime:/code/runtime
+
+volumes:
+  app_runtime:

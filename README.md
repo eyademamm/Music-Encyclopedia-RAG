@@ -95,42 +95,68 @@ Frontend:   static/index.html     (chat UI — Vinyl Den theme)
 
 ## Setup
 
-1. Clone and enter the repo.
-2. Copy `.env.example` to `.env` and add your `OPENAI_API_KEY`.
-3. Install dependencies:
-   ```bash
-   uv sync
-   ```
-4. Build the knowledge base (needs internet access to Wikipedia):
-   ```bash
-   uv run python src/ingest.py
-   ```
-5. Download the ONNX embedding model:
-   ```bash
-   uv run python src/download_model.py
-   ```
-6. Precompute embeddings (one-time, ~5-10 min):
-   ```bash
-   uv run python src/build_embeddings.py
-   ```
-   This saves the embeddings to `data/embeddings.npy`. All subsequent server startups will load this file in ~1 second instead of recomputing from scratch.
-7. (Optional) Generate ground truth and run evaluation:
-   ```bash
-   uv run python src/generate_ground_truth.py
-   uv run python src/evaluate.py
-   uv run python src/evaluate_llm.py
-   ```
-8. Run the app:
-   ```bash
-   uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-   Or with Docker:
-   ```bash
-   docker compose up --build
-   ```
+The repository includes the reviewed local corpus (`data/docs.json`) and its
+matching precomputed embeddings (`data/embeddings.npy`). A fresh checkout does
+not need to ingest Wikipedia or compute embeddings before it can run. The only
+runtime asset downloaded during setup is the pinned ONNX model (~127 MiB).
 
-9. Open http://localhost:8000 to ask questions, and
-   http://localhost:8000/static/dashboard.html for the monitoring dashboard.
+### Local development
+
+Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), internet access
+for the one-time model download, and a valid OpenAI API key for `/ask`.
+
+```bash
+git clone https://github.com/eyademamm/Music-Encyclopedia-RAG.git music-rag
+cd music-rag
+cp .env.example .env
+# Set OPENAI_API_KEY in .env
+uv sync --frozen
+uv run python src/download_model.py
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Open http://localhost:8000 to ask questions and
+http://localhost:8000/static/dashboard.html for the monitoring dashboard.
+
+### Docker
+
+Prerequisites: Docker Compose, internet access for the image base,
+dependencies, and pinned model download, plus a valid OpenAI API key.
+
+```bash
+git clone https://github.com/eyademamm/Music-Encyclopedia-RAG.git music-rag
+cd music-rag
+cp .env.example .env
+# Set OPENAI_API_KEY in .env
+docker compose up --build
+```
+
+The build downloads the exact model revision used by the committed embeddings.
+The corpus and embeddings are baked into the image; query logs are persisted in
+the `app_runtime` named volume, so they do not hide those retrieval assets.
+
+### Refreshing retrieval assets
+
+Wikipedia content is live and may change. Refresh the corpus only when you
+intend to review and version a new retrieval snapshot:
+
+```bash
+uv run python src/ingest.py
+uv run python src/build_embeddings.py
+uv run python src/evaluate.py
+```
+
+Commit `data/docs.json` and `data/embeddings.npy` together after review. The
+existing evaluation data is optional; generating it requires an OpenAI API key:
+
+```bash
+uv run python src/generate_ground_truth.py
+uv run python src/evaluate.py
+uv run python src/evaluate_llm.py
+```
+
+The embedding model remains downloaded rather than committed. Do not commit
+`models/`, `data/logs.db`, or generated evaluation outputs.
 
 ## Interface
 
@@ -148,15 +174,16 @@ A bespoke **"The Crate" Vinyl Den** frontend (`static/index.html`) featuring:
 
 ## Monitoring
 
-Every query is logged to `data/logs.db` (SQLite) with response time, real token usage (prompt and completion tokens), calculated cost, tools used,
+Every query is logged to `data/logs.db` by default (or the path configured with
+`MUSIC_RAG_DB_PATH`) with response time, real token usage (prompt and completion tokens), calculated cost, tools used,
 and user feedback (👍/👎). `static/dashboard.html` renders 6 charts:
 question volume, estimated daily API cost, feedback distribution, response time per query, retrieval
 method breakdown, and feedback over time. Source tracking is deduplicated to ensure clean source citations in the UI.
 
 ## Containerization
 
-`Dockerfile` + `docker-compose.yml` run the full app in one command:
-`docker compose up --build`.
+`Dockerfile` + `docker-compose.yml` run the full app in one command after the
+`.env` prerequisite described above: `docker compose up --build`.
 
 ## Best Practices Implemented
 

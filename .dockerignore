@@ -1,0 +1,24 @@
+.env
+.env.*
+.git/
+.venv/
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+
+# The model is downloaded from its pinned revision inside the image.
+models/
+
+# Keep only the immutable runtime retrieval assets in the build context.
+data/*
+!data/docs.json
+!data/embeddings.npy
+
+# Development and project metadata are not needed by the image.
+AGENTS.md
+README.md
+tests/

@@ -28,10 +28,26 @@ HEADERS = {
     "User-Agent": "MusicEncyclopediaRAG/1.0 (LLM Zoomcamp project; contact: eyademam28@gmail.com)"
 }
 MAX_WIKI_WORDS = 3000   # keep context window manageable
+LYRICS_REQUEST_KINDS = {"display", "analysis", "display_and_analysis"}
 
 
 class ExternalToolServiceError(Exception):
     """Raised when a live tool provider cannot be reached safely."""
+
+
+@dataclass(frozen=True)
+class LyricsData:
+    """Verified LRCLIB lyric data kept separate from agent prose."""
+
+    provider: str
+    provider_id: int
+    track_title: str
+    artist: str
+    album: str | None
+    duration_seconds: float | None
+    instrumental: bool
+    plain_lyrics: str
+    synced_lyrics: str | None
 
 
 @dataclass(frozen=True)
@@ -41,6 +57,7 @@ class ToolResult:
     content: str
     source: str | None = None
     chunk_count: int = 0
+    lyrics: LyricsData | None = None
 
 
 # ── Tool: local_search ────────────────────────────────────────────────────────
@@ -100,8 +117,70 @@ def wikipedia_search(query: str) -> ToolResult:
 
 # ── Tool: lyrics_search ───────────────────────────────────────────────────────
 
-def lyrics_search(artist_name: str, track_name: str) -> ToolResult:
-    """Fetch plain lyrics from LRCLIB (free, no API key required)."""
+def _normalized_lyrics_identity(value: str) -> str:
+    return re.sub(r"[^\w]+", "", value.casefold())
+
+
+def _lyrics_data_from_response(data: object, artist_name: str, track_name: str) -> LyricsData | None:
+    """Validate LRCLIB metadata before exposing a lyric payload."""
+    if not isinstance(data, dict):
+        return None
+
+    provider_id = data.get("id")
+    returned_track = data.get("trackName")
+    returned_artist = data.get("artistName")
+    plain = data.get("plainLyrics")
+    synced = data.get("syncedLyrics")
+    album = data.get("albumName")
+    duration = data.get("duration")
+    instrumental = data.get("instrumental")
+
+    if (
+        isinstance(provider_id, bool)
+        or not isinstance(provider_id, int)
+        or not isinstance(returned_track, str)
+        or not returned_track.strip()
+        or not isinstance(returned_artist, str)
+        or not returned_artist.strip()
+        or not isinstance(plain, str)
+        or not isinstance(instrumental, bool)
+        or (synced is not None and not isinstance(synced, str))
+        or (album is not None and not isinstance(album, str))
+        or (duration is not None and (isinstance(duration, bool) or not isinstance(duration, (int, float))))
+    ):
+        return None
+
+    if (
+        _normalized_lyrics_identity(returned_track) != _normalized_lyrics_identity(track_name)
+        or _normalized_lyrics_identity(returned_artist) != _normalized_lyrics_identity(artist_name)
+    ):
+        return None
+
+    return LyricsData(
+        provider="LRCLIB",
+        provider_id=provider_id,
+        track_title=returned_track.strip(),
+        artist=returned_artist.strip(),
+        album=album.strip() if isinstance(album, str) and album.strip() else None,
+        duration_seconds=float(duration) if duration is not None else None,
+        instrumental=instrumental,
+        plain_lyrics=plain,
+        synced_lyrics=synced if isinstance(synced, str) and synced.strip() else None,
+    )
+
+
+def lyrics_search(artist_name: str, track_name: str, request_kind: str) -> ToolResult:
+    """Fetch and validate LRCLIB lyrics for display and/or analysis."""
+    if (
+        not isinstance(artist_name, str)
+        or not artist_name.strip()
+        or not isinstance(track_name, str)
+        or not track_name.strip()
+        or not isinstance(request_kind, str)
+        or request_kind not in LYRICS_REQUEST_KINDS
+    ):
+        return ToolResult("Lyrics search received an unsupported request type.")
+
     params = {
         "artist_name": artist_name,
         "track_name": track_name,
@@ -111,15 +190,40 @@ def lyrics_search(artist_name: str, track_name: str) -> ToolResult:
         if r.status_code == 404:
             return ToolResult(f"No lyrics found for '{track_name}' by {artist_name}.")
         r.raise_for_status()
-        data = r.json()
-        plain = data.get("plainLyrics") or ""
-        if not plain.strip():
+        try:
+            data = r.json()
+        except ValueError as exc:
+            raise ExternalToolServiceError(
+                "Lyrics search returned an invalid response. Try another available tool if possible."
+            ) from exc
+
+        lyrics = _lyrics_data_from_response(data, artist_name, track_name)
+        if lyrics is None:
             return ToolResult(
-                f"Lyrics for '{track_name}' by {artist_name} were found but appear to be empty."
+                f"Lyrics search could not verify a matching result for '{track_name}' by {artist_name}."
             )
+        source = f"LRCLIB: {lyrics.track_title} by {lyrics.artist}"
+        if lyrics.instrumental and not lyrics.plain_lyrics.strip():
+            return ToolResult(
+                f"'{lyrics.track_title}' by {lyrics.artist} is marked as instrumental by LRCLIB.",
+                source=source,
+            )
+        if not lyrics.plain_lyrics.strip():
+            return ToolResult(
+                f"Lyrics for '{lyrics.track_title}' by {lyrics.artist} were found but appear to be empty."
+            )
+
+        if request_kind == "display":
+            content = (
+                f"LRCLIB found '{lyrics.track_title}' by {lyrics.artist}. "
+                "The application will display the lyrics separately."
+            )
+        else:
+            content = f"Lyrics for '{lyrics.track_title}' by {lyrics.artist}:\n\n{lyrics.plain_lyrics}"
         return ToolResult(
-            f"Lyrics for '{track_name}' by {artist_name}:\n\n{plain}",
-            source=f"LRCLIB: {track_name} by {artist_name}",
+            content,
+            source=source,
+            lyrics=lyrics,
         )
     except requests.RequestException as exc:
         raise ExternalToolServiceError(
@@ -178,8 +282,9 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "lyrics_search",
             "description": (
-                "Fetch the lyrics of a specific song. Use when the user asks about "
-                "song lyrics, what a song means, or wants to read or quote lyrics."
+                "Fetch verified LRCLIB data for a specific song. Use display when the user "
+                "directly asks to read full lyrics, analysis for themes, meaning, imagery, or "
+                "a passage, and display_and_analysis only when the user explicitly wants both."
             ),
             "parameters": {
                 "type": "object",
@@ -191,9 +296,14 @@ TOOL_DEFINITIONS = [
                     "track_name": {
                         "type": "string",
                         "description": "The song/track name, e.g. 'Bohemian Rhapsody' or 'No Woman No Cry'"
-                    }
+                    },
+                    "request_kind": {
+                        "type": "string",
+                        "enum": ["display", "analysis", "display_and_analysis"],
+                        "description": "Whether lyrics are for direct display, analysis, or both"
+                    },
                 },
-                "required": ["artist_name", "track_name"]
+                "required": ["artist_name", "track_name", "request_kind"]
             }
         }
     }
@@ -231,7 +341,8 @@ def execute_tool(name: str, arguments: dict, context: dict) -> ToolResult:
     elif name == "lyrics_search":
         artist = arguments.get("artist_name", "")
         track = arguments.get("track_name", "")
-        return lyrics_search(artist, track)
+        request_kind = arguments.get("request_kind", "")
+        return lyrics_search(artist, track, request_kind)
 
     else:
         return ToolResult(f"Unknown tool: {name}")

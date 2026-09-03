@@ -46,7 +46,7 @@ def test_feedback_validation_and_scoping(api_client, isolated_modules, monkeypat
     monkeypatch.setattr(
         isolated_modules.app,
         "agentic_answer",
-        lambda question, context: ("Answer", [], 0, 1, 1, 0.0, []),
+        lambda question, context: ("Answer", [], 0, 1, 1, 0.0, [], None),
     )
     interaction_id = api_client.post(
         "/ask", json={"conversation_id": first["id"], "question": "Queen"}
@@ -78,7 +78,7 @@ def test_ask_logs_turn_telemetry_and_sources(api_client, isolated_modules, monke
         "agentic_answer",
         lambda question, context: (
             seen_context.append(context), "A grounded answer.", ["Queen"], 3, 11, 7,
-            0.00000585, ["local_search", "wikipedia_search", "local_search"],
+            0.00000585, ["local_search", "wikipedia_search", "local_search"], None,
         )[1:],
     )
 
@@ -104,6 +104,69 @@ def test_ask_logs_turn_telemetry_and_sources(api_client, isolated_modules, monke
     assert json.loads(row[5]) == ["local_search", "wikipedia_search", "local_search"]
     assert row[6] == conversation["id"]
     assert json.loads(row[7]) == ["Queen"]
+    assert response.json()["lyrics"] is None
+
+
+def test_ask_returns_structured_lyrics_without_persisting_lyric_text(api_client, isolated_modules, monkeypatch):
+    conversation = create_conversation(api_client)
+    lyric_body = "COMPLETE LYRICS ONLY IN THE LIVE RESPONSE"
+    lyrics = isolated_modules.tools.LyricsData(
+        provider="LRCLIB",
+        provider_id=42,
+        track_title="Monks",
+        artist="Frank Ocean",
+        album="channel ORANGE",
+        duration_seconds=200.0,
+        instrumental=False,
+        plain_lyrics=lyric_body,
+        synced_lyrics="[00:00.00] COMPLETE LYRICS ONLY IN THE LIVE RESPONSE",
+    )
+    monkeypatch.setattr(
+        isolated_modules.app,
+        "agentic_answer",
+        lambda question, context: (
+            "I found “Monks” by Frank Ocean.",
+            ["LRCLIB: Monks by Frank Ocean"],
+            0,
+            4,
+            3,
+            0.0,
+            ["lyrics_search"],
+            lyrics,
+        ),
+    )
+
+    response = api_client.post(
+        "/ask",
+        json={"conversation_id": conversation["id"], "question": "What were the lyrics of Monks?"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == "I found “Monks” by Frank Ocean."
+    assert lyric_body not in body["answer"]
+    assert body["lyrics"] == {
+        "provider": "LRCLIB",
+        "provider_id": 42,
+        "track_title": "Monks",
+        "artist": "Frank Ocean",
+        "album": "channel ORANGE",
+        "duration_seconds": 200.0,
+        "instrumental": False,
+        "plain_lyrics": lyric_body,
+        "synced_lyrics": "[00:00.00] COMPLETE LYRICS ONLY IN THE LIVE RESPONSE",
+    }
+
+    interaction_id = body["interaction_id"]
+    with sqlite3.connect(isolated_modules.db_path) as conn:
+        stored_values = conn.execute(
+            "SELECT question, answer, tools_used, sources FROM logs WHERE id = ?",
+            (interaction_id,),
+        ).fetchone()
+
+    assert all(lyric_body not in (value or "") for value in stored_values)
+    history = api_client.get(f"/conversations/{conversation['id']}").json()
+    assert lyric_body not in str(history)
 
 
 def test_conversations_are_listed_reopened_and_isolated(api_client, isolated_modules, monkeypatch):
@@ -112,7 +175,7 @@ def test_conversations_are_listed_reopened_and_isolated(api_client, isolated_mod
     monkeypatch.setattr(
         isolated_modules.app,
         "agentic_answer",
-        lambda question, context: (f"Answer: {question}", ["Source"], 1, 1, 1, 0.0, ["local_search"]),
+        lambda question, context: (f"Answer: {question}", ["Source"], 1, 1, 1, 0.0, ["local_search"], None),
     )
     api_client.post("/ask", json={"conversation_id": first["id"], "question": "First question"})
     api_client.post("/ask", json={"conversation_id": second["id"], "question": "Second question"})
@@ -134,7 +197,7 @@ def test_deleting_conversation_cascades_turns_and_preserves_others(api_client, i
     monkeypatch.setattr(
         isolated_modules.app,
         "agentic_answer",
-        lambda question, context: ("Answer", [], 0, 1, 1, 0.0, []),
+        lambda question, context: ("Answer", [], 0, 1, 1, 0.0, [], None),
     )
     api_client.post("/ask", json={"conversation_id": first["id"], "question": "One"})
     api_client.post("/ask", json={"conversation_id": second["id"], "question": "Two"})

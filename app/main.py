@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 from search import build_text_index, build_vector_index, load_docs  # noqa: E402
-from tools import (TOOL_DEFINITIONS, ExternalToolServiceError,
+from tools import (TOOL_DEFINITIONS, ExternalToolServiceError, LyricsData,
                    execute_tool)                                     # noqa: E402
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "logs.db"
@@ -223,6 +223,23 @@ def decode_string_list(value: str | None) -> list[str]:
     return [item for item in parsed if isinstance(item, str)]
 
 
+def lyrics_payload(lyrics: LyricsData | None) -> dict[str, object] | None:
+    """Serialize live LRCLIB data without persisting it in conversation logs."""
+    if lyrics is None:
+        return None
+    return {
+        "provider": lyrics.provider,
+        "provider_id": lyrics.provider_id,
+        "track_title": lyrics.track_title,
+        "artist": lyrics.artist,
+        "album": lyrics.album,
+        "duration_seconds": lyrics.duration_seconds,
+        "instrumental": lyrics.instrumental,
+        "plain_lyrics": lyrics.plain_lyrics,
+        "synced_lyrics": lyrics.synced_lyrics,
+    }
+
+
 def truncate_context(text: str, maximum: int) -> str:
     if len(text) <= maximum:
         return text
@@ -276,7 +293,7 @@ You have access to tools to look up information. Always ground your answers in t
 ## Tool strategy
 1. **local_search** first — use it for any music question. It covers well-known artists, genres, and bands.
 2. **wikipedia_search** — use when local_search returns insufficient results, or for lesser-known artists, specific albums, record labels, music theory, etc.
-3. **lyrics_search** — use when the user asks for lyrics, wants to know what a song is about, or asks to quote or analyse a song.
+3. **lyrics_search** — use `display` when the user directly asks to read full lyrics, `analysis` for themes, meaning, imagery, or a passage, and `display_and_analysis` only when the user explicitly asks for both.
 4. You may call **multiple tools** in sequence if building a complete answer requires it.
 
 ## Rules
@@ -284,7 +301,8 @@ You have access to tools to look up information. Always ground your answers in t
 - Format answers with **markdown** (bold, bullet lists, headings) for readability.
 - Be warm and conversational — you love music and it shows.
 - Keep answers thorough but concise; avoid padding.
-- Never reproduce complete song lyrics or complete source extracts. Summarize instead and use only brief quotations when necessary.
+- Complete song lyrics may be displayed only by the application from structured LRCLIB data. Never reproduce a complete lyric body in your answer.
+- After a successful display-mode lookup, the application creates the short introduction and displays the lyrics separately; do not try to summarize or reproduce them.
 - Prior conversation messages may help resolve follow-up questions, but they are not factual evidence. Use current tool results for factual claims.
 """
 
@@ -335,7 +353,7 @@ def agentic_answer(question: str, conversation_context: list[dict[str, str]] | N
 
     Returns:
         (answer, sources, num_chunks, prompt_tokens, completion_tokens, cost,
-        tools_used)
+        tools_used, lyrics)
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -348,6 +366,7 @@ def agentic_answer(question: str, conversation_context: list[dict[str, str]] | N
     sources: list[str]      = []
     tools_called: list[str] = []
     num_chunks = 0
+    lyrics_for_display: LyricsData | None = None
 
     MAX_ITERATIONS = 5
 
@@ -390,10 +409,38 @@ def agentic_answer(question: str, conversation_context: list[dict[str, str]] | N
                 logger.warning("Tool '%s' is unavailable: %s", name, exc)
                 result = str(exc)
                 source = None
+                tool_result = None
 
             tools_called.append(name)
             if source and source not in sources:
                 sources.append(source)
+
+            request_kind = arguments.get("request_kind") if name == "lyrics_search" else None
+            if (
+                tool_result is not None
+                and tool_result.lyrics is not None
+                and request_kind in {"display", "display_and_analysis"}
+            ):
+                lyrics_for_display = tool_result.lyrics
+
+            if (
+                tool_result is not None
+                and tool_result.lyrics is not None
+                and request_kind == "display"
+            ):
+                lyrics = tool_result.lyrics
+                answer = f'I found “{lyrics.track_title}” by {lyrics.artist}.'
+                cost = (total_prompt_tokens * 0.15 + total_completion_tokens * 0.60) / 1_000_000
+                return (
+                    answer,
+                    sources,
+                    num_chunks,
+                    total_prompt_tokens,
+                    total_completion_tokens,
+                    cost,
+                    tools_called,
+                    lyrics_for_display,
+                )
 
             messages.append({
                 "role":         "tool",
@@ -421,6 +468,7 @@ def agentic_answer(question: str, conversation_context: list[dict[str, str]] | N
         total_completion_tokens,
         cost,
         tools_called,
+        lyrics_for_display,
     )
 
 
@@ -574,6 +622,7 @@ def ask(req: AskRequest):
         completion_tokens,
         cost,
         tools_called,
+        lyrics,
     ) = agentic_answer(req.question, conversation_context)
     elapsed = time.time() - start
 
@@ -627,6 +676,7 @@ def ask(req: AskRequest):
         "sources":        sources,
         "response_time":  elapsed,
         "tools_used":     tools_called,
+        "lyrics":         lyrics_payload(lyrics),
     }
 
 

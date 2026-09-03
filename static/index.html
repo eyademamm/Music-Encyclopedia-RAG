@@ -97,6 +97,14 @@
   .answer-content li.reveal-block.is-visible { display: list-item; }
   @keyframes liner-note-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
+  .lyrics-card { max-width: 700px; margin-top: 18px; overflow: hidden; border: 1px solid rgba(196,114,122,.34); border-radius: 12px; background: linear-gradient(145deg, rgba(139,34,82,.18), rgba(36,28,31,.92)); box-shadow: inset 0 1px rgba(255,255,255,.04); }
+  .lyrics-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 17px 13px; border-bottom: 1px solid rgba(205,191,174,.14); }
+  .lyrics-card-kicker { margin: 0 0 4px; color: var(--accent-secondary); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .lyrics-card-title { margin: 0; color: var(--text-primary); font: 600 20px/1.2 'Playfair Display', serif; }
+  .lyrics-card-artist { margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; }.lyrics-card-album { color: var(--text-muted); }
+  .lyrics-attribution { flex: 0 0 auto; margin: 2px 0 0; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+  .lyrics-body { max-height: 460px; margin: 0; padding: 17px; overflow: auto; color: var(--text-primary); background: rgba(8,6,7,.24); font: 13px/1.72 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
   .answer-footer { display: grid; gap: 14px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(205,191,174,.14); }
   .detail-label { display: block; margin-bottom: 7px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
   .tool-trace { display: flex; flex-wrap: wrap; gap: 3px 0; margin: 0; padding: 0; list-style: none; color: var(--text-secondary); font-size: 12px; }
@@ -119,7 +127,7 @@
 
   @media (max-width: 760px) {
     .app-shell { width: 100%; display: block; }.sidebar { position: fixed; z-index: 15; top: 0; bottom: 0; left: 0; width: min(310px, calc(100vw - 42px)); height: auto; padding: 24px 18px; background: #171114; border-right: 1px solid var(--border); box-shadow: 18px 0 36px rgba(0,0,0,.45); transform: translateX(-105%); transition: transform .18s ease; }.sidebar.open { transform: translateX(0); }.sidebar-scrim { position: fixed; inset: 0; z-index: 14; border: 0; background: rgba(0,0,0,.55); }.sidebar-scrim.visible { display: block; }
-    main { padding: 20px 16px 16px; }.mobile-header { display: flex; align-items: center; gap: 11px; margin-bottom: 27px; }.mobile-menu-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary); font-size: 20px; }.mobile-brand { font-size: 27px; }.chat-head { margin-bottom: 20px; }.chat-head h2 { font-size: 25px; }.transcript { min-height: calc(100svh - 270px); }.message-list { gap: 22px; }.message-user .message-body { max-width: 90%; }.message-assistant { padding-left: 14px; }.answer-content { font-size: 15px; line-height: 1.64; }.empty-state { min-height: calc(100svh - 310px); padding: 18px 0 32px; }.composer-wrap { margin: 0 -2px; }.composer-row { gap: 8px; }.send-btn { padding: 10px; }.send-btn .send-label { display: none; }.send-btn .send-short { display: inline; }
+    main { padding: 20px 16px 16px; }.mobile-header { display: flex; align-items: center; gap: 11px; margin-bottom: 27px; }.mobile-menu-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary); font-size: 20px; }.mobile-brand { font-size: 27px; }.chat-head { margin-bottom: 20px; }.chat-head h2 { font-size: 25px; }.transcript { min-height: calc(100svh - 270px); }.message-list { gap: 22px; }.message-user .message-body { max-width: 90%; }.message-assistant { padding-left: 14px; }.answer-content { font-size: 15px; line-height: 1.64; }.lyrics-card-header { padding: 14px; }.lyrics-card-title { font-size: 18px; }.lyrics-attribution { display: none; }.lyrics-body { max-height: 390px; padding: 14px; font-size: 12px; }.empty-state { min-height: calc(100svh - 310px); padding: 18px 0 32px; }.composer-wrap { margin: 0 -2px; }.composer-row { gap: 8px; }.send-btn { padding: 10px; }.send-btn .send-label { display: none; }.send-btn .send-short { display: inline; }
   }
   @media (min-width: 761px) { .send-short { display: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }.answer-content .reveal-block { display: revert; opacity: 1; transform: none; } }
@@ -178,6 +186,9 @@ function cancelReveal(wrapper) {
   wrapper._revealController?.abort();
   finishReveal(wrapper);
 }
+function cancelVisibleReveals() {
+  document.querySelectorAll('.message-assistant').forEach(cancelReveal);
+}
 function startProgressiveReveal(wrapper) {
   const blocks = revealBlocks(wrapper.querySelector('.answer-content') || document.createElement('div'));
   if (!blocks.length || reducedMotionPreferred()) { finishReveal(wrapper); return; }
@@ -208,7 +219,18 @@ function renderConversationList() {
 }
 function createUserElement(message) { const wrapper = document.createElement('article'); wrapper.className = 'message message-user'; wrapper.dataset.messageId = message.id; wrapper.setAttribute('aria-label', 'Your message'); const body = document.createElement('div'); body.className = 'message-body'; body.textContent = message.content; wrapper.appendChild(body); return wrapper; }
 function renderTrace(tools) { if (!tools?.length) return null; const section = document.createElement('section'); const title = document.createElement('span'); title.className = 'detail-label'; title.textContent = 'Research path'; const list = document.createElement('ol'); list.className = 'tool-trace'; tools.forEach(tool => { const item = document.createElement('li'); item.textContent = TOOL_LABELS[tool] || 'Consulted a music source'; list.appendChild(item); }); section.append(title, list); return section; }
-function renderSources(sources) { if (!sources?.length) return null; const section = document.createElement('section'); const title = document.createElement('span'); title.className = 'detail-label'; title.textContent = 'From the collection'; const list = document.createElement('ul'); list.className = 'sources'; sources.forEach(source => { const item = document.createElement('li'); item.className = 'source-pill'; item.textContent = String(source); list.appendChild(item); }); section.append(title, list); return section; }
+function renderSources(sources) { if (!sources?.length) return null; const section = document.createElement('section'); const title = document.createElement('span'); title.className = 'detail-label'; title.textContent = 'Sources'; const list = document.createElement('ul'); list.className = 'sources'; sources.forEach(source => { const item = document.createElement('li'); item.className = 'source-pill'; item.textContent = String(source); list.appendChild(item); }); section.append(title, list); return section; }
+function renderLyricsCard(lyrics) {
+  if (!lyrics?.plain_lyrics) return null;
+  const card = document.createElement('section'); card.className = 'lyrics-card'; card.setAttribute('aria-label', `Lyrics for ${lyrics.track_title || 'this song'}`);
+  const header = document.createElement('header'); header.className = 'lyrics-card-header'; const details = document.createElement('div');
+  const kicker = document.createElement('p'); kicker.className = 'lyrics-card-kicker'; kicker.textContent = 'Lyrics'; const title = document.createElement('h3'); title.className = 'lyrics-card-title'; title.textContent = String(lyrics.track_title || 'Untitled track');
+  const artist = document.createElement('p'); artist.className = 'lyrics-card-artist'; artist.textContent = String(lyrics.artist || 'Unknown artist');
+  if (lyrics.album) { const album = document.createElement('span'); album.className = 'lyrics-card-album'; album.textContent = ` · ${lyrics.album}`; artist.appendChild(album); }
+  const attribution = document.createElement('p'); attribution.className = 'lyrics-attribution'; attribution.textContent = `Lyrics via ${lyrics.provider || 'LRCLIB'}`;
+  const body = document.createElement('pre'); body.className = 'lyrics-body'; body.textContent = String(lyrics.plain_lyrics);
+  details.append(kicker, title, artist); header.append(details, attribution); card.append(header, body); return card;
+}
 function renderFeedback(message) {
   if (!message.interaction_id) return null;
   const section = document.createElement('section'); const label = document.createElement('span'); label.className = 'detail-label'; label.textContent = 'Rate this answer'; const group = document.createElement('div'); group.className = 'feedback'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Rate this answer');
@@ -220,20 +242,22 @@ function createAssistantElement(message) {
   const wrapper = document.createElement('article'); wrapper.className = 'message message-assistant'; wrapper.dataset.messageId = message.id; wrapper.setAttribute('aria-label', 'The Crate response');
   if (message.pending) { const pending = document.createElement('div'); pending.className = 'pending-message'; pending.setAttribute('role', 'status'); const record = document.createElement('span'); record.className = 'mini-record'; record.setAttribute('aria-hidden', 'true'); const text = document.createElement('span'); text.textContent = 'Flipping through the crates…'; pending.append(record, text); wrapper.appendChild(pending); return wrapper; }
   if (message.error) { const error = document.createElement('div'); error.className = 'error-message'; error.setAttribute('role', 'alert'); const text = document.createElement('div'); text.textContent = message.error; const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'retry-btn'; retry.textContent = message.cancelled ? 'Refresh chat' : 'Try again'; retry.addEventListener('click', () => retryMessage(message)); error.append(text, retry); wrapper.appendChild(error); return wrapper; }
-  const kicker = document.createElement('p'); kicker.className = 'message-kicker'; kicker.textContent = 'Liner Notes'; const answer = document.createElement('div'); answer.className = 'answer-content'; renderMarkdownSafely(message.content, answer); wrapper.append(kicker, answer);
+  const kicker = document.createElement('p'); kicker.className = 'message-kicker'; kicker.textContent = 'Liner Notes'; const answer = document.createElement('div'); answer.className = 'answer-content'; renderMarkdownSafely(message.content, answer); wrapper.append(kicker, answer); const lyrics = renderLyricsCard(message.lyrics); if (lyrics) wrapper.appendChild(lyrics);
   const footer = document.createElement('footer'); footer.className = 'answer-footer'; [renderTrace(message.tools_used), renderSources(message.sources), renderFeedback(message)].filter(Boolean).forEach(part => footer.appendChild(part)); if (footer.childElementCount) wrapper.appendChild(footer); return wrapper;
 }
 function mountMessage(message, list = document.getElementById('conversation-messages')) {
   const element = message.role === 'user' ? createUserElement(message) : createAssistantElement(message);
   list.appendChild(element);
-  if (message.reveal) { message.reveal = false; startProgressiveReveal(element); }
+  const shouldReveal = Boolean(message.reveal); message.reveal = false;
+  if (shouldReveal) startProgressiveReveal(element);
   return element;
 }
 function appendMessage(message) { return mountMessage(message); }
 function replaceMessage(message) {
   const previous = document.querySelector(`[data-message-id="${message.id}"]`); const next = message.role === 'user' ? createUserElement(message) : createAssistantElement(message);
   if (previous) { cancelReveal(previous); previous.replaceWith(next); } else document.getElementById('conversation-messages').appendChild(next);
-  if (message.reveal) { message.reveal = false; startProgressiveReveal(next); }
+  const shouldReveal = Boolean(message.reveal); message.reveal = false;
+  if (shouldReveal) startProgressiveReveal(next);
   return next;
 }
 function renderMessages() {
@@ -255,6 +279,7 @@ async function createConversation() { const response = await fetch('/conversatio
 function startNewChat() { state.activeConversationId = null; state.messages = []; localStorage.removeItem(ACTIVE_CONVERSATION_KEY); renderConversationList(); updateChatHeading(); renderMessages(); syncComposer(); closeSidebar(); const input = document.getElementById('q'); input.value = ''; autoResize(input); input.focus(); announce('New chat ready.'); }
 async function openConversation(conversationId) {
   if (conversationId === state.activeConversationId) { closeSidebar(); return; }
+  cancelVisibleReveals();
   try { const response = await fetch(`/conversations/${encodeURIComponent(conversationId)}`); if (response.status === 404) { localStorage.removeItem(ACTIVE_CONVERSATION_KEY); await refreshConversations(); startNewChat(); return; } if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); state.activeConversationId = data.conversation.id; state.messages = (data.messages || []).map(message => ({ ...message, id: messageId() })); localStorage.setItem(ACTIVE_CONVERSATION_KEY, state.activeConversationId); renderConversationList(); updateChatHeading(); renderMessages(); syncComposer(); closeSidebar(); announce(`Opened conversation: ${data.conversation.title}.`); } catch (error) { showToast(error.message || "Couldn't load that conversation."); }
 }
 async function deleteActiveConversation() {
@@ -270,7 +295,7 @@ async function sendQuestion(question, existingAssistantId = null) {
     else { const user = { id: messageId(), role: 'user', content: question }; assistant = { id: messageId(), role: 'assistant', pending: true, retryQuestion: question }; state.messages.push(user, assistant); const list = document.getElementById('conversation-messages'); if (list.querySelector('.empty-state')) list.replaceChildren(); appendMessage(user); appendMessage(assistant); }
     const controller = new AbortController(); const request = { conversationId, assistantId: assistant.id, question, controller }; state.request = request; syncComposer(); announce('Searching the collection.');
     const response = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: conversationId, question }), signal: controller.signal }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json();
-    assistant.pending = false; assistant.cancelled = false; assistant.reveal = true; assistant.content = data.answer; assistant.interaction_id = data.interaction_id; assistant.sources = data.sources || []; assistant.tools_used = data.tools_used || []; assistant.feedback = null; if (state.activeConversationId === conversationId) replaceMessage(assistant); await refreshConversations(); announce('Answer ready.');
+    assistant.pending = false; assistant.cancelled = false; assistant.reveal = true; assistant.content = data.answer; assistant.interaction_id = data.interaction_id; assistant.sources = data.sources || []; assistant.tools_used = data.tools_used || []; assistant.lyrics = data.lyrics || null; assistant.feedback = null; if (state.activeConversationId === conversationId) replaceMessage(assistant); await refreshConversations(); announce('Answer ready.');
   } catch (error) {
     const assistant = state.messages.find(message => message.id === (state.request?.assistantId || existingAssistantId));
     if (assistant) { assistant.pending = false; assistant.cancelled = error.name === 'AbortError'; assistant.error = assistant.cancelled ? 'Request stopped. The server may still finish this answer; refresh this chat to check.' : (error.message || "Couldn't reach the collection. Try again."); if (state.activeConversationId === (state.request?.conversationId || state.activeConversationId)) replaceMessage(assistant); }

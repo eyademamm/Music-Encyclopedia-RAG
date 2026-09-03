@@ -341,57 +341,57 @@
   }
 
   /* ========== MARKDOWN CONTENT ========== */
-  #answer {
+  .answer-content {
     font-family: 'Playfair Display', serif;
     font-size: 16px;
     line-height: 1.75;
     color: var(--text-primary);
   }
-  #answer h1, #answer h2, #answer h3 {
+  .answer-content h1, .answer-content h2, .answer-content h3 {
     font-family: 'Playfair Display', serif;
     color: var(--text-primary);
     margin-top: 1em;
     margin-bottom: 0.4em;
   }
-  #answer h1 { font-size: 1.4em; }
-  #answer h2 { font-size: 1.2em; }
-  #answer h3 { font-size: 1.05em; }
-  #answer p {
+  .answer-content h1 { font-size: 1.4em; }
+  .answer-content h2 { font-size: 1.2em; }
+  .answer-content h3 { font-size: 1.05em; }
+  .answer-content p {
     margin-bottom: 0.8em;
   }
-  #answer strong {
+  .answer-content strong {
     color: #fff;
   }
-  #answer em {
+  .answer-content em {
     color: var(--accent-secondary);
   }
-  #answer ul, #answer ol {
+  .answer-content ul, .answer-content ol {
     padding-left: 1.5em;
     margin-bottom: 0.8em;
   }
-  #answer li {
+  .answer-content li {
     margin-bottom: 0.3em;
   }
-  #answer li::marker {
+  .answer-content li::marker {
     color: var(--accent-secondary);
   }
-  #answer code {
+  .answer-content code {
     font-family: 'Courier New', monospace;
     background: rgba(255,255,255,0.06);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.9em;
   }
-  #answer a {
+  .answer-content a {
     color: var(--accent-secondary);
     text-decoration: none;
   }
-  #answer a:hover {
+  .answer-content a:hover {
     text-decoration: underline;
   }
 
   /* Typing cursor */
-  #answer.typing::after {
+  .answer-content.typing::after {
     content: '▌';
     color: var(--accent-secondary);
     animation: blink 0.8s step-end infinite;
@@ -412,7 +412,7 @@
     margin-bottom: 10px;
     font-weight: 500;
   }
-  #sources {
+  .sources {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -529,6 +529,77 @@
   }
   .toast-close:hover { color: var(--text-primary); }
 
+  /* ========== CONVERSATION HISTORY ========== */
+  .conversation-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .new-chat-btn, .conversation-delete {
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    background: var(--bg-surface-alt);
+    border-radius: 9px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .new-chat-btn { padding: 9px 13px; font-weight: 600; }
+  .conversation-delete { padding: 6px 9px; font-size: 12px; }
+  .new-chat-btn:hover, .conversation-delete:hover {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+  }
+  .conversation-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    flex: 1;
+  }
+  .conversation-item {
+    min-width: 140px;
+    max-width: 210px;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    border-radius: 9px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conversation-item.active {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+    background: var(--bg-surface-alt);
+  }
+  .message-list { display: grid; gap: 16px; margin-bottom: 20px; }
+  .message-user {
+    justify-self: end;
+    max-width: 86%;
+    padding: 12px 15px;
+    color: var(--text-primary);
+    background: var(--accent-primary);
+    border-radius: 14px 14px 3px 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .message-assistant {
+    background: var(--bg-surface);
+    border-left: 4px solid var(--accent-primary);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 4px 16px var(--shadow);
+  }
+  .message-assistant .fb { opacity: 1; margin-top: 16px; }
+  .message-assistant .fb.hidden, .message-assistant .fb-thanks { display: none; }
+  .message-assistant .fb-thanks.visible { display: block; margin-top: 16px; color: var(--accent-secondary); font-style: italic; }
+  .empty-transcript { color: var(--text-muted); text-align: center; padding: 20px 0; font-style: italic; }
+
   /* ========== RESPONSIVE ========== */
   @media (max-width: 600px) {
     body { padding: 24px 16px 40px; }
@@ -537,6 +608,8 @@
     .needle-btn { width: 100%; justify-content: center; }
     .chips-container { justify-content: center; }
     #answer-card { padding: 20px 18px; }
+    .conversation-toolbar { align-items: stretch; flex-wrap: wrap; }
+    .conversation-list { order: 2; flex-basis: 100%; }
   }
 </style>
 </head>
@@ -558,10 +631,16 @@
     <p class="subtitle">Dig through the stacks</p>
   </div>
 
+  <div class="conversation-toolbar">
+    <button class="new-chat-btn" id="new-chat-btn" type="button">+ New Chat</button>
+    <div class="conversation-list" id="conversation-list" aria-label="Previous conversations"></div>
+    <button class="conversation-delete" id="delete-chat-btn" type="button" disabled>Delete</button>
+  </div>
+
   <!-- ====== SEARCH BAR ====== -->
   <div class="search-bar">
     <input class="search-input" id="q" placeholder="Ask about any artist, genre, or era..." />
-    <button class="needle-btn" id="ask-btn" onclick="ask()">
+    <button class="needle-btn" id="ask-btn" type="button">
       <!-- Tonearm / needle icon -->
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="16" r="5" fill="none"/>
@@ -594,271 +673,218 @@
   </div>
   <div id="loading-text" class="loading-text hidden">Spinning up...</div>
 
-  <!-- ====== ANSWER ====== -->
-  <div id="answer-container">
-    <div id="answer-card">
-      <div class="liner-notes-label">Liner Notes</div>
-      <div id="answer"></div>
-    </div>
-
-    <div class="sources-section">
-      <div class="sources-title">From the collection</div>
-      <div id="sources"></div>
-    </div>
-
-    <div class="fb" id="fb">
-      <button onclick="sendFeedback(1)">👍 Solid track</button>
-      <button onclick="sendFeedback(-1)">👎 Skip</button>
-    </div>
-    <div id="fb-thanks">Noted! 🎶</div>
-  </div>
+  <div id="conversation-messages" class="message-list" aria-live="polite"></div>
 
 <script>
-// ========== STATE ==========
-let lastInteractionId = null;
-let typewriterAbort = false;
+const state = { conversations: [], activeConversationId: null, messages: [], loading: false };
+const ACTIVE_CONVERSATION_KEY = 'the-crate-active-conversation';
+const loadingPhrases = ['Spinning up…', 'Flipping through the crates…', 'Pulling a deep cut…', 'Dusting off the vinyl…', 'Queuing up the B-side…'];
 
-const loadingPhrases = [
-  "Spinning up…",
-  "Flipping through the crates…",
-  "Pulling a deep cut…",
-  "Dusting off the vinyl…",
-  "Queuing up the B-side…"
-];
-
-// ========== MARKDOWN SETUP ==========
-marked.setOptions({
-  breaks: true,
-  gfm: true
-});
-
+marked.setOptions({ breaks: true, gfm: true });
 const markdownSanitizerOptions = {
-  ALLOWED_TAGS: [
-    'p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li', 'blockquote',
-    'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table',
-    'thead', 'tbody', 'tr', 'th', 'td'
-  ],
-  ALLOWED_ATTR: ['href', 'title'],
-  RETURN_DOM_FRAGMENT: true
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+  ALLOWED_ATTR: ['href', 'title'], RETURN_DOM_FRAGMENT: true
 };
 
 function renderMarkdownSafely(text, element) {
   if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
-    // Fail closed if either CDN dependency is unavailable.
     element.textContent = text;
     return;
   }
-
-  const parsed = marked.parse(text);
-  const sanitized = DOMPurify.sanitize(parsed, markdownSanitizerOptions);
-  element.replaceChildren(sanitized);
+  element.replaceChildren(DOMPurify.sanitize(marked.parse(text), markdownSanitizerOptions));
 }
 
-// ========== TYPEWRITER ==========
-async function typewriterEffect(text, element, speed = 12) {
-  typewriterAbort = false;
-  element.classList.add('typing');
-  let displayed = '';
-
-  for (let i = 0; i < text.length; i++) {
-    if (typewriterAbort) break;
-    displayed += text[i];
-    renderMarkdownSafely(displayed, element);
-    // Variable speed: pause longer after punctuation
-    const char = text[i];
-    let delay = speed;
-    if (char === '.' || char === '!' || char === '?') delay = speed * 4;
-    else if (char === ',') delay = speed * 2;
-    else if (char === '\n') delay = speed * 3;
-    await new Promise(r => setTimeout(r, delay));
-  }
-
-  element.classList.remove('typing');
-  renderMarkdownSafely(text, element);
-}
-
-// ========== TOAST ==========
 function showToast(message) {
-  // Remove existing toasts
-  document.querySelectorAll('.toast').forEach(t => t.remove());
-
+  document.querySelectorAll('.toast').forEach(toast => toast.remove());
   const toast = document.createElement('div');
   toast.className = 'toast';
-
-  const messageEl = document.createElement('span');
-  messageEl.className = 'toast-msg';
-  messageEl.textContent = String(message);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'toast-close';
-  closeBtn.type = 'button';
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => toast.remove());
-
-  toast.append(messageEl, closeBtn);
-  document.body.appendChild(toast);
-
-  // Auto-dismiss after 6s
-  setTimeout(() => {
-    if (toast.parentElement) {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 300);
-    }
-  }, 6000);
+  const text = document.createElement('span');
+  text.className = 'toast-msg';
+  text.textContent = String(message);
+  const close = document.createElement('button');
+  close.className = 'toast-close'; close.type = 'button'; close.textContent = '✕';
+  close.addEventListener('click', () => toast.remove());
+  toast.append(text, close); document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
 }
 
 function renderSources(sources, element) {
   element.replaceChildren();
-  sources.forEach(src => {
-    const pill = document.createElement('span');
-    pill.className = 'source-pill';
-
-    const dot = document.createElement('span');
-    dot.className = 'source-dot';
-
-    pill.append(dot, document.createTextNode(String(src)));
-    element.appendChild(pill);
+  (sources || []).forEach(source => {
+    const pill = document.createElement('span'); pill.className = 'source-pill';
+    const dot = document.createElement('span'); dot.className = 'source-dot';
+    pill.append(dot, document.createTextNode(String(source))); element.appendChild(pill);
   });
 }
 
-// ========== LOADING STATE ==========
+function renderConversationList() {
+  const list = document.getElementById('conversation-list');
+  list.replaceChildren();
+  state.conversations.forEach(conversation => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'conversation-item';
+    if (conversation.id === state.activeConversationId) button.classList.add('active');
+    button.textContent = conversation.title;
+    button.title = conversation.title;
+    button.addEventListener('click', () => openConversation(conversation.id));
+    list.appendChild(button);
+  });
+  document.getElementById('delete-chat-btn').disabled = !state.activeConversationId || state.loading;
+}
+
+function renderMessages() {
+  const list = document.getElementById('conversation-messages');
+  list.replaceChildren();
+  if (!state.messages.length) {
+    const empty = document.createElement('p'); empty.className = 'empty-transcript';
+    empty.textContent = 'Start a fresh side of the record.'; list.appendChild(empty); return;
+  }
+  state.messages.forEach(message => {
+    if (message.role === 'user') {
+      const bubble = document.createElement('div'); bubble.className = 'message-user';
+      bubble.textContent = message.content; list.appendChild(bubble); return;
+    }
+    const card = document.createElement('article'); card.className = 'message-assistant';
+    const label = document.createElement('div'); label.className = 'liner-notes-label'; label.textContent = 'Liner Notes';
+    const answer = document.createElement('div'); answer.className = 'answer-content'; renderMarkdownSafely(message.content, answer);
+    card.append(label, answer);
+    if (message.sources && message.sources.length) {
+      const section = document.createElement('div'); section.className = 'sources-section';
+      const heading = document.createElement('div'); heading.className = 'sources-title'; heading.textContent = 'From the collection';
+      const sources = document.createElement('div'); sources.className = 'sources'; renderSources(message.sources, sources);
+      section.append(heading, sources); card.appendChild(section);
+    }
+    if (message.interaction_id) {
+      const feedback = document.createElement('div'); feedback.className = 'fb';
+      const thanks = document.createElement('div'); thanks.className = 'fb-thanks'; thanks.textContent = 'Noted! 🎶';
+      if (message.feedback) {
+        feedback.classList.add('hidden'); thanks.classList.add('visible');
+      } else {
+        [[1, '👍 Solid track'], [-1, '👎 Skip']].forEach(([value, labelText]) => {
+          const button = document.createElement('button'); button.type = 'button'; button.textContent = labelText;
+          button.addEventListener('click', () => sendFeedback(message, value, feedback, thanks)); feedback.appendChild(button);
+        });
+      }
+      card.append(feedback, thanks);
+    }
+    list.appendChild(card);
+  });
+  list.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+}
+
 function setLoading(loading) {
-  const btn = document.getElementById('ask-btn');
-  const input = document.getElementById('q');
+  state.loading = loading;
+  const button = document.getElementById('ask-btn'); const input = document.getElementById('q');
+  button.disabled = loading; input.disabled = loading;
+  document.getElementById('new-chat-btn').disabled = loading;
+  button.textContent = loading ? '⏳ Searching…' : 'Drop the Needle';
+  renderConversationList();
+  if (!loading) input.focus();
+}
 
-  if (loading) {
-    btn.disabled = true;
-    input.disabled = true;
-    btn.innerHTML = '⏳ Searching…';
-  } else {
-    btn.disabled = false;
-    input.disabled = false;
-    btn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="16" r="5" fill="none"/>
-        <circle cx="8" cy="16" r="1.5" fill="currentColor" stroke="none"/>
-        <line x1="12" y1="13" x2="20" y2="3"/>
-        <circle cx="20.5" cy="2.5" r="1.5" fill="none"/>
-      </svg>
-      Drop the Needle
-    `;
-    input.focus();
+async function readError(response) {
+  try { return (await response.json()).detail || `Server returned ${response.status}`; }
+  catch (_) { return `Server returned ${response.status}`; }
+}
+
+async function refreshConversations() {
+  const response = await fetch('/conversations');
+  if (!response.ok) throw new Error(await readError(response));
+  state.conversations = (await response.json()).conversations || [];
+  renderConversationList();
+}
+
+async function createConversation() {
+  const response = await fetch('/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  if (!response.ok) throw new Error(await readError(response));
+  const conversation = await response.json();
+  state.activeConversationId = conversation.id; state.messages = [];
+  localStorage.setItem(ACTIVE_CONVERSATION_KEY, conversation.id);
+  await refreshConversations(); renderMessages();
+}
+
+async function openConversation(conversationId) {
+  if (state.loading || conversationId === state.activeConversationId) return;
+  const response = await fetch(`/conversations/${encodeURIComponent(conversationId)}`);
+  if (response.status === 404) {
+    localStorage.removeItem(ACTIVE_CONVERSATION_KEY); await refreshConversations();
+    if (state.conversations.length) return openConversation(state.conversations[0].id);
+    return createConversation();
   }
+  if (!response.ok) return showToast(await readError(response));
+  const data = await response.json();
+  state.activeConversationId = data.conversation.id; state.messages = data.messages || [];
+  localStorage.setItem(ACTIVE_CONVERSATION_KEY, state.activeConversationId);
+  renderConversationList(); renderMessages();
 }
 
-// ========== CHIPS ==========
-function askChip(chipEl) {
-  document.getElementById('q').value = chipEl.textContent;
-  ask();
+async function deleteActiveConversation() {
+  if (!state.activeConversationId || state.loading) return;
+  const deletedId = state.activeConversationId;
+  const response = await fetch(`/conversations/${encodeURIComponent(deletedId)}`, { method: 'DELETE' });
+  if (response.status !== 204 && response.status !== 404) return showToast(await readError(response));
+  localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+  state.activeConversationId = null; state.messages = [];
+  await refreshConversations();
+  if (state.conversations.length) await openConversation(state.conversations[0].id);
+  else await createConversation();
 }
 
-// ========== ASK ==========
 async function ask() {
-  const input = document.getElementById('q');
-  const question = input.value.trim();
-  if (!question) return;
-
-  // Abort any running typewriter
-  typewriterAbort = true;
-
-  // Hide chips after first question
-  document.getElementById('chips').classList.add('hidden');
-
-  // Loading state
-  setLoading(true);
-
-  // Show vinyl animation
-  const vinylContainer = document.getElementById('vinyl-container');
-  const loadingText = document.getElementById('loading-text');
-
-  vinylContainer.classList.remove('hidden');
-  vinylContainer.classList.add('spinning');
-  loadingText.classList.remove('hidden');
+  const input = document.getElementById('q'); const question = input.value.trim();
+  if (!question || state.loading) return;
+  if (!state.activeConversationId) {
+    try { await createConversation(); } catch (error) { showToast(error.message); return; }
+  }
+  const conversationId = state.activeConversationId;
+  state.messages.push({ role: 'user', content: question }); renderMessages(); input.value = '';
+  document.getElementById('chips').classList.add('hidden'); setLoading(true);
+  const vinyl = document.getElementById('vinyl-container'); const loadingText = document.getElementById('loading-text');
+  vinyl.classList.remove('hidden'); vinyl.classList.add('spinning'); loadingText.classList.remove('hidden');
   loadingText.textContent = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
-
-  // Hide previous answer
-  const answerContainer = document.getElementById('answer-container');
-  answerContainer.classList.remove('visible');
-  answerContainer.style.display = 'none';
-  document.getElementById('fb').classList.remove('visible');
-  document.getElementById('fb-thanks').style.display = 'none';
-
   try {
-    const res = await fetch('/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
-    });
-
-    if (!res.ok) {
-      throw new Error(`Server returned ${res.status}`);
+    const response = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: conversationId, question }) });
+    if (response.status === 404) {
+      state.messages.pop(); state.activeConversationId = null; localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+      await refreshConversations(); renderMessages(); await createConversation();
+      throw new Error('That conversation was deleted. A new chat is ready.');
     }
-
-    const data = await res.json();
-
-    // Stop animation
-    vinylContainer.classList.remove('spinning');
-    setTimeout(async () => {
-      vinylContainer.classList.add('hidden');
-      loadingText.classList.add('hidden');
-      setLoading(false);
-
-      // Show answer container
-      answerContainer.style.display = 'block';
-      // Trigger reflow for animation
-      void answerContainer.offsetWidth;
-      answerContainer.classList.add('visible');
-
-      // Render sources
-      const sourcesEl = document.getElementById('sources');
-      renderSources(data.sources, sourcesEl);
-
-      lastInteractionId = data.interaction_id;
-
-      // Typewriter the answer
-      const answerEl = document.getElementById('answer');
-      answerEl.replaceChildren();
-      await typewriterEffect(data.answer, answerEl);
-
-      // Fade in feedback buttons
-      document.getElementById('fb').classList.add('visible');
-    }, 600);
-
-  } catch (err) {
-    console.error(err);
-    vinylContainer.classList.remove('spinning');
-    setTimeout(() => {
-      vinylContainer.classList.add('hidden');
-      loadingText.classList.add('hidden');
-      setLoading(false);
-    }, 400);
-
-    if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-      showToast("Couldn't reach the server — is the backend running?");
-    } else {
-      showToast(`Something went wrong: ${err.message}`);
+    if (!response.ok) throw new Error(await readError(response));
+    const data = await response.json();
+    if (state.activeConversationId === data.conversation_id) {
+      state.messages.push({ role: 'assistant', content: data.answer, interaction_id: data.interaction_id, sources: data.sources, feedback: null });
+      renderMessages(); await refreshConversations();
     }
+  } catch (error) {
+    console.error(error); showToast(error.message || "Couldn't reach the server.");
+  } finally {
+    vinyl.classList.remove('spinning'); vinyl.classList.add('hidden'); loadingText.classList.add('hidden'); setLoading(false);
   }
 }
 
-// ========== FEEDBACK ==========
-async function sendFeedback(value) {
-  if (!lastInteractionId) return;
-  try {
-    await fetch('/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ interaction_id: lastInteractionId, feedback: value })
-    });
-  } catch (_) { /* silent */ }
-  document.getElementById('fb').classList.remove('visible');
-  document.getElementById('fb-thanks').style.display = 'block';
+async function sendFeedback(message, value, feedbackElement, thanksElement) {
+  if (!state.activeConversationId || !message.interaction_id) return;
+  const response = await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: state.activeConversationId, interaction_id: message.interaction_id, feedback: value }) });
+  if (!response.ok) return showToast(await readError(response));
+  message.feedback = value; feedbackElement.classList.add('hidden'); thanksElement.classList.add('visible');
 }
 
-// ========== KEYBOARD ==========
-document.getElementById('q').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.target.disabled) ask();
-});
+function askChip(chip) { document.getElementById('q').value = chip.textContent; ask(); }
+
+document.getElementById('ask-btn').addEventListener('click', ask);
+document.getElementById('new-chat-btn').addEventListener('click', () => createConversation().catch(error => showToast(error.message)));
+document.getElementById('delete-chat-btn').addEventListener('click', () => deleteActiveConversation().catch(error => showToast(error.message)));
+document.getElementById('q').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.target.disabled) ask(); });
+
+(async () => {
+  try {
+    await refreshConversations();
+    const savedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+    if (savedId && state.conversations.some(conversation => conversation.id === savedId)) await openConversation(savedId);
+    else if (state.conversations.length) await openConversation(state.conversations[0].id);
+    else await createConversation();
+  } catch (error) { showToast(error.message || "Couldn't load conversation history."); }
+})();
 </script>
 </body>
 </html>

@@ -12,7 +12,7 @@ from typing import Literal
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +30,9 @@ DB_PATH = Path(os.environ.get("MUSIC_RAG_DB_PATH", DEFAULT_DB_PATH))
 MODEL   = "gpt-4o-mini"
 MAX_QUESTION_LENGTH = 2_000
 MAX_INTERACTION_ID_LENGTH = 64
+MAX_CONVERSATION_TITLE_LENGTH = 80
+MAX_CONTEXT_TURNS = 4
+MAX_CONTEXT_CHARS = 8_000
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +59,22 @@ _tool_context = {
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 
+def conversation_title(question: str | None) -> str:
+    """Produce a compact, display-safe title without storing another text copy."""
+    normalized = " ".join((question or "").split())
+    if not normalized:
+        return "Imported chat"
+    if len(normalized) <= MAX_CONVERSATION_TITLE_LENGTH:
+        return normalized
+    return normalized[: MAX_CONVERSATION_TITLE_LENGTH - 1].rstrip() + "…"
+
 @contextmanager
 def db_connection():
     """Open a short-lived SQLite connection and commit successful writes."""
     conn = None
     try:
         conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA foreign_keys = ON")
         yield conn
         conn.commit()
     except sqlite3.Error:
@@ -92,6 +105,14 @@ def init_db():
                     tools_used TEXT DEFAULT ''
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+            """)
             existing_columns = {
                 row[1] for row in conn.execute("PRAGMA table_info(logs)")
             }
@@ -103,6 +124,37 @@ def init_db():
             ]:
                 if col not in existing_columns:
                     conn.execute(f"ALTER TABLE logs ADD COLUMN {col} {col_type} DEFAULT {default}")
+            if "conversation_id" not in existing_columns:
+                conn.execute(
+                    "ALTER TABLE logs ADD COLUMN conversation_id TEXT "
+                    "REFERENCES conversations(id) ON DELETE CASCADE"
+                )
+            if "sources" not in existing_columns:
+                conn.execute("ALTER TABLE logs ADD COLUMN sources TEXT NOT NULL DEFAULT '[]'")
+
+            legacy_rows = conn.execute(
+                "SELECT id, question, created_at FROM logs WHERE conversation_id IS NULL"
+            ).fetchall()
+            for interaction_id, question, created_at in legacy_rows:
+                timestamp = created_at if created_at is not None else time.time()
+                conversation_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                    (conversation_id, conversation_title(question), timestamp, timestamp),
+                )
+                conn.execute(
+                    "UPDATE logs SET conversation_id = ? WHERE id = ?",
+                    (conversation_id, interaction_id),
+                )
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_updated "
+                "ON conversations(updated_at DESC, id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_logs_conversation_created "
+                "ON logs(conversation_id, created_at, id)"
+            )
     except sqlite3.Error as exc:
         logger.critical("Unable to initialize the SQLite interaction log.", exc_info=True)
         raise RuntimeError("Unable to initialize the interaction log database.") from exc
@@ -114,6 +166,7 @@ init_db()
 # ── Request/Response models ───────────────────────────────────────────────────
 
 class AskRequest(BaseModel):
+    conversation_id: uuid.UUID
     question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
 
     @field_validator("question")
@@ -126,6 +179,7 @@ class AskRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
+    conversation_id: uuid.UUID
     interaction_id: str = Field(min_length=1, max_length=MAX_INTERACTION_ID_LENGTH)
     feedback: Literal[-1, 1]  # 1 = thumbs up, -1 = thumbs down
 
@@ -136,6 +190,81 @@ class FeedbackRequest(BaseModel):
         if not value:
             raise ValueError("interaction_id must not be blank")
         return value
+
+
+class CreateConversationRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=MAX_CONVERSATION_TITLE_LENGTH)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = " ".join(value.split())
+        if not value:
+            return None
+        return value
+
+
+def conversation_exists(conn: sqlite3.Connection, conversation_id: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM conversations WHERE id = ?", (conversation_id,)
+    ).fetchone() is not None
+
+
+def decode_string_list(value: str | None) -> list[str]:
+    """Read compact JSON metadata while tolerating legacy malformed values."""
+    try:
+        parsed = json.loads(value or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, str)]
+
+
+def truncate_context(text: str, maximum: int) -> str:
+    if len(text) <= maximum:
+        return text
+    if maximum <= 1:
+        return text[:maximum]
+    return text[: maximum - 1] + "…"
+
+
+def load_recent_context(conn: sqlite3.Connection, conversation_id: str) -> list[dict[str, str]]:
+    """Return a hard-bounded, chronological window of visible prior turns only."""
+    rows = conn.execute(
+        """
+        SELECT question, answer
+        FROM logs
+        WHERE conversation_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (conversation_id, MAX_CONTEXT_TURNS),
+    ).fetchall()
+
+    selected: list[tuple[str, str]] = []
+    used_chars = 0
+    for question, answer in rows:
+        question = question or ""
+        answer = answer or ""
+        turn_chars = len(question) + len(answer)
+        if used_chars + turn_chars <= MAX_CONTEXT_CHARS:
+            selected.append((question, answer))
+            used_chars += turn_chars
+            continue
+        if not selected:
+            question = truncate_context(question, min(len(question), MAX_CONTEXT_CHARS // 4))
+            answer = truncate_context(answer, MAX_CONTEXT_CHARS - len(question))
+            selected.append((question, answer))
+        break
+
+    messages: list[dict[str, str]] = []
+    for question, answer in reversed(selected):
+        messages.append({"role": "user", "content": question})
+        messages.append({"role": "assistant", "content": answer})
+    return messages
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -155,6 +284,8 @@ You have access to tools to look up information. Always ground your answers in t
 - Format answers with **markdown** (bold, bullet lists, headings) for readability.
 - Be warm and conversational — you love music and it shows.
 - Keep answers thorough but concise; avoid padding.
+- Never reproduce complete song lyrics or complete source extracts. Summarize instead and use only brief quotations when necessary.
+- Prior conversation messages may help resolve follow-up questions, but they are not factual evidence. Use current tool results for factual claims.
 """
 
 
@@ -195,7 +326,7 @@ def create_completion(**kwargs):
             detail="The answer service returned an error. Please try again.",
         ) from None
 
-def agentic_answer(question: str):
+def agentic_answer(question: str, conversation_context: list[dict[str, str]] | None = None):
     """
     Run the ReAct agentic loop:
     1. Send question to LLM with tool definitions
@@ -208,6 +339,7 @@ def agentic_answer(question: str):
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
+        *(conversation_context or []),
         {"role": "user",   "content": question},
     ]
 
@@ -302,8 +434,136 @@ async def unexpected_exception_handler(request: Request, exc: Exception):
         content={"detail": "An unexpected server error occurred."},
     )
 
+
+@app.post("/conversations", status_code=status.HTTP_201_CREATED)
+def create_conversation(req: CreateConversationRequest):
+    conversation_id = str(uuid.uuid4())
+    timestamp = time.time()
+    title = req.title or "New Chat"
+    try:
+        with db_connection() as conn:
+            conn.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (conversation_id, title, timestamp, timestamp),
+            )
+    except sqlite3.Error:
+        logger.exception("Unable to create conversation.")
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable. Please try again.",
+        ) from None
+    return {
+        "id": conversation_id,
+        "title": title,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "turn_count": 0,
+    }
+
+
+@app.get("/conversations")
+def list_conversations(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    try:
+        with db_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = [dict(row) for row in conn.execute(
+                """
+                SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(l.id) AS turn_count
+                FROM conversations AS c
+                LEFT JOIN logs AS l ON l.conversation_id = c.id
+                GROUP BY c.id
+                ORDER BY c.updated_at DESC, c.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()]
+    except sqlite3.Error:
+        logger.exception("Unable to list conversations.")
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable. Please try again.",
+        ) from None
+    return {"conversations": rows}
+
+
+@app.get("/conversations/{conversation_id}")
+def get_conversation(conversation_id: uuid.UUID):
+    conversation_id_text = str(conversation_id)
+    try:
+        with db_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            conversation = conn.execute(
+                "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
+                (conversation_id_text,),
+            ).fetchone()
+            if conversation is None:
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            turns = conn.execute(
+                """
+                SELECT id, question, answer, feedback, created_at, sources
+                FROM logs
+                WHERE conversation_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (conversation_id_text,),
+            ).fetchall()
+    except sqlite3.Error:
+        logger.exception("Unable to load conversation.")
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable. Please try again.",
+        ) from None
+
+    messages = []
+    for turn in turns:
+        messages.extend([
+            {"role": "user", "content": turn["question"] or "", "created_at": turn["created_at"]},
+            {
+                "role": "assistant",
+                "content": turn["answer"] or "",
+                "created_at": turn["created_at"],
+                "interaction_id": turn["id"],
+                "sources": decode_string_list(turn["sources"]),
+                "feedback": turn["feedback"],
+            },
+        ])
+    return {"conversation": dict(conversation), "messages": messages}
+
+
+@app.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(conversation_id: uuid.UUID):
+    try:
+        with db_connection() as conn:
+            cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (str(conversation_id),))
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+    except sqlite3.Error:
+        logger.exception("Unable to delete conversation.")
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable. Please try again.",
+        ) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/ask")
 def ask(req: AskRequest):
+    conversation_id = str(req.conversation_id)
+    try:
+        with db_connection() as conn:
+            if not conversation_exists(conn, conversation_id):
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            conversation_context = load_recent_context(conn, conversation_id)
+    except sqlite3.Error:
+        logger.exception("Unable to load conversation context.")
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable. Please try again.",
+        ) from None
+
     start = time.time()
     (
         answer,
@@ -313,19 +573,22 @@ def ask(req: AskRequest):
         completion_tokens,
         cost,
         tools_called,
-    ) = agentic_answer(req.question)
+    ) = agentic_answer(req.question, conversation_context)
     elapsed = time.time() - start
 
     interaction_id = str(uuid.uuid4())
+    created_at = time.time()
     try:
         with db_connection() as conn:
+            if not conversation_exists(conn, conversation_id):
+                raise HTTPException(status_code=404, detail="Conversation not found.")
             conn.execute(
                 """
                 INSERT INTO logs (
                     id, question, answer, method, num_chunks, response_time,
                     feedback, created_at, prompt_tokens, completion_tokens,
-                    cost, tools_used
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cost, tools_used, conversation_id, sources
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     interaction_id,
@@ -335,12 +598,19 @@ def ask(req: AskRequest):
                     num_chunks,
                     elapsed,
                     None,
-                    time.time(),
+                    created_at,
                     prompt_tokens,
                     completion_tokens,
                     cost,
                     json.dumps(tools_called, separators=(",", ":")),
+                    conversation_id,
+                    json.dumps(sources, separators=(",", ":")),
                 ),
+            )
+            conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? "
+                "WHERE id = ? AND title = 'New Chat'",
+                (conversation_title(req.question), created_at, conversation_id),
             )
     except sqlite3.Error:
         logger.exception("Unable to save interaction log entry.")
@@ -350,6 +620,7 @@ def ask(req: AskRequest):
         ) from None
 
     return {
+        "conversation_id": conversation_id,
         "interaction_id": interaction_id,
         "answer":         answer,
         "sources":        sources,
@@ -363,8 +634,8 @@ def feedback(req: FeedbackRequest):
     try:
         with db_connection() as conn:
             cursor = conn.execute(
-                "UPDATE logs SET feedback = ? WHERE id = ?",
-                (req.feedback, req.interaction_id),
+                "UPDATE logs SET feedback = ? WHERE id = ? AND conversation_id = ?",
+                (req.feedback, req.interaction_id, str(req.conversation_id)),
             )
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Interaction not found.")
@@ -382,7 +653,14 @@ def stats():
     try:
         with db_connection() as conn:
             conn.row_factory = sqlite3.Row
-            rows = [dict(r) for r in conn.execute("SELECT * FROM logs ORDER BY created_at DESC").fetchall()]
+            rows = [dict(r) for r in conn.execute(
+                """
+                SELECT id, method, num_chunks, response_time, feedback, created_at,
+                       prompt_tokens, completion_tokens, cost, tools_used
+                FROM logs
+                ORDER BY created_at DESC
+                """
+            ).fetchall()]
     except sqlite3.Error:
         logger.exception("Unable to read interaction logs.")
         raise HTTPException(

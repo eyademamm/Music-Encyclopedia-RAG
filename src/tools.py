@@ -11,7 +11,7 @@ Tools:
 """
 
 import re
-import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import requests
@@ -30,15 +30,31 @@ HEADERS = {
 MAX_WIKI_WORDS = 3000   # keep context window manageable
 
 
+class ExternalToolServiceError(Exception):
+    """Raised when a live tool provider cannot be reached safely."""
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    """Compact metadata for a tool result sent to the agent."""
+
+    content: str
+    source: str | None = None
+    chunk_count: int = 0
+
+
 # ── Tool: local_search ────────────────────────────────────────────────────────
 
-def local_search(query: str, text_index, vector_index, embedder, num_results: int = 5) -> str:
+def local_search(query: str, text_index, vector_index, embedder, num_results: int = 5) -> ToolResult:
     """Hybrid search over the local prebuilt knowledge base."""
     chunks = hybrid_search(text_index, vector_index, embedder, query, num_results=num_results)
     if not chunks:
-        return f"No results found in local knowledge base for: '{query}'"
+        return ToolResult(f"No results found in local knowledge base for: '{query}'")
+
     parts = [f"[{c['topic']}] {c['chunk']}" for c in chunks]
-    return "\n\n".join(parts)
+    topics = list(dict.fromkeys(c["topic"] for c in chunks if c.get("topic")))
+    source = ", ".join(topics) if topics else "Local Knowledge Base"
+    return ToolResult("\n\n".join(parts), source=source, chunk_count=len(chunks))
 
 
 # ── Tool: wikipedia_search ────────────────────────────────────────────────────
@@ -49,7 +65,7 @@ def _clean_wiki_text(text: str) -> str:
     return text.strip()
 
 
-def wikipedia_search(query: str) -> str:
+def wikipedia_search(query: str) -> ToolResult:
     """Fetch a Wikipedia article extract in real time."""
     params = {
         "action": "query",
@@ -65,22 +81,26 @@ def wikipedia_search(query: str) -> str:
         pages = r.json().get("query", {}).get("pages", {})
         for _, page in pages.items():
             if "missing" in page:
-                return f"No Wikipedia article found for '{query}'."
+                return ToolResult(f"No Wikipedia article found for '{query}'.")
             title = page.get("title", query)
             text = _clean_wiki_text(page.get("extract", ""))
+            if not text:
+                return ToolResult(f"Wikipedia article '{title}' contains no usable text.")
             # Truncate to MAX_WIKI_WORDS
             words = text.split()
             if len(words) > MAX_WIKI_WORDS:
                 text = " ".join(words[:MAX_WIKI_WORDS]) + "\n\n[... article truncated ...]"
-            return f"Wikipedia: {title}\n\n{text}"
-        return f"No Wikipedia article found for '{query}'."
-    except requests.RequestException as e:
-        return f"Wikipedia search failed: {e}"
+            return ToolResult(f"Wikipedia: {title}\n\n{text}", source=f"Wikipedia: {title}")
+        return ToolResult(f"No Wikipedia article found for '{query}'.")
+    except requests.RequestException as exc:
+        raise ExternalToolServiceError(
+            "Wikipedia is temporarily unavailable. Try another available tool if possible."
+        ) from exc
 
 
 # ── Tool: lyrics_search ───────────────────────────────────────────────────────
 
-def lyrics_search(artist_name: str, track_name: str) -> str:
+def lyrics_search(artist_name: str, track_name: str) -> ToolResult:
     """Fetch plain lyrics from LRCLIB (free, no API key required)."""
     params = {
         "artist_name": artist_name,
@@ -89,15 +109,22 @@ def lyrics_search(artist_name: str, track_name: str) -> str:
     try:
         r = requests.get(LRCLIB_API, params=params, headers=HEADERS, timeout=15)
         if r.status_code == 404:
-            return f"No lyrics found for '{track_name}' by {artist_name}."
+            return ToolResult(f"No lyrics found for '{track_name}' by {artist_name}.")
         r.raise_for_status()
         data = r.json()
         plain = data.get("plainLyrics") or ""
         if not plain.strip():
-            return f"Lyrics for '{track_name}' by {artist_name} were found but appear to be empty."
-        return f"Lyrics for '{track_name}' by {artist_name}:\n\n{plain}"
-    except requests.RequestException as e:
-        return f"Lyrics search failed: {e}"
+            return ToolResult(
+                f"Lyrics for '{track_name}' by {artist_name} were found but appear to be empty."
+            )
+        return ToolResult(
+            f"Lyrics for '{track_name}' by {artist_name}:\n\n{plain}",
+            source=f"LRCLIB: {track_name} by {artist_name}",
+        )
+    except requests.RequestException as exc:
+        raise ExternalToolServiceError(
+            "Lyrics search is temporarily unavailable. Try another available tool if possible."
+        ) from exc
 
 
 # ── OpenAI tool schemas ───────────────────────────────────────────────────────
@@ -175,7 +202,7 @@ TOOL_DEFINITIONS = [
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
-def execute_tool(name: str, arguments: dict, context: dict) -> tuple[str, str]:
+def execute_tool(name: str, arguments: dict, context: dict) -> ToolResult:
     """
     Route a tool call to the right function.
 
@@ -185,41 +212,26 @@ def execute_tool(name: str, arguments: dict, context: dict) -> tuple[str, str]:
         context:   Dict with 'text_index', 'vector_index', 'embedder' for local_search
 
     Returns:
-        (result_string, source_label)
+        ToolResult with agent content, an optional successful-source label, and
+        the number of local chunks retrieved.
     """
     if name == "local_search":
         query = arguments.get("query", "")
-        result = local_search(
+        return local_search(
             query,
             context["text_index"],
             context["vector_index"],
             context["embedder"],
         )
-        # Extract unique topic names for source attribution
-        topics = []
-        for line in result.split("\n"):
-            if line.startswith("[") and "]" in line:
-                topic = line[1:line.index("]")]
-                if topic not in topics:
-                    topics.append(topic)
-        source = ", ".join(topics) if topics else "Local Knowledge Base"
-        return result, source
 
     elif name == "wikipedia_search":
         query = arguments.get("query", "")
-        result = wikipedia_search(query)
-        # Extract article title from result
-        first_line = result.split("\n")[0] if result else ""
-        source = first_line if first_line.startswith("Wikipedia:") else f"Wikipedia: {query}"
-        return result, source
+        return wikipedia_search(query)
 
     elif name == "lyrics_search":
         artist = arguments.get("artist_name", "")
         track = arguments.get("track_name", "")
-        result = lyrics_search(artist, track)
-        source = f"LRCLIB: {track} by {artist}"
-        return result, source
+        return lyrics_search(artist, track)
 
     else:
-        return f"Unknown tool: {name}", ""
-
+        return ToolResult(f"Unknown tool: {name}")

@@ -68,13 +68,34 @@ async function loadStats() {
     options: { plugins: { title: { display: true, text: 'Response Time per Query', color: '#eee' } } }
   });
 
-  // 4. Retrieval method used
-  const byMethod = {};
-  logs.forEach(l => { byMethod[l.method] = (byMethod[l.method] || 0) + 1; });
+  // 4. Agent tool calls. New records use a compact JSON array; legacy records
+  // may contain comma-separated names or no tool trace at all.
+  function recordedTools(log) {
+    const raw = log.tools_used || '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const tools = parsed.filter(tool => typeof tool === 'string' && tool);
+        if (tools.length) return tools;
+      }
+    } catch (_) {
+      // Fall through to the legacy comma-separated format.
+    }
+
+    const legacyTools = raw.split(',').map(tool => tool.trim()).filter(Boolean);
+    return legacyTools.length ? legacyTools : ['No tool recorded'];
+  }
+
+  const byTool = {};
+  logs.forEach(log => {
+    recordedTools(log).forEach(tool => {
+      byTool[tool] = (byTool[tool] || 0) + 1;
+    });
+  });
   new Chart(document.getElementById('sourceChart'), {
     type: 'pie',
-    data: { labels: Object.keys(byMethod), datasets: [{ data: Object.values(byMethod), backgroundColor: ['#5b5be0','#e05b5b','#4caf50'] }] },
-    options: { plugins: { title: { display: true, text: 'Retrieval Method Used', color: '#eee' } } }
+    data: { labels: Object.keys(byTool), datasets: [{ label: 'Tool calls', data: Object.values(byTool), backgroundColor: ['#5b5be0','#e05b5b','#4caf50'] }] },
+    options: { plugins: { title: { display: true, text: 'Agent Tool Calls', color: '#eee' } } }
   });
 
   // 5. Feedback over time

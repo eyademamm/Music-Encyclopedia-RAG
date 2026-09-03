@@ -123,6 +123,7 @@ def test_conversations_are_listed_reopened_and_isolated(api_client, isolated_mod
 
     assert [message["content"] for message in first_history["messages"]] == ["First question", "Answer: First question"]
     assert [message["content"] for message in second_history["messages"]] == ["Second question", "Answer: Second question"]
+    assert first_history["messages"][1]["tools_used"] == ["local_search"]
     assert {conversation["id"] for conversation in listed} == {first["id"], second["id"]}
     assert all("question" not in row and "answer" not in row for row in api_client.get("/stats").json()["logs"])
 

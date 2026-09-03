@@ -503,7 +503,7 @@ def get_conversation(conversation_id: uuid.UUID):
                 raise HTTPException(status_code=404, detail="Conversation not found.")
             turns = conn.execute(
                 """
-                SELECT id, question, answer, feedback, created_at, sources
+                SELECT id, question, answer, feedback, created_at, sources, tools_used
                 FROM logs
                 WHERE conversation_id = ?
                 ORDER BY created_at ASC, id ASC
@@ -527,6 +527,7 @@ def get_conversation(conversation_id: uuid.UUID):
                 "created_at": turn["created_at"],
                 "interaction_id": turn["id"],
                 "sources": decode_string_list(turn["sources"]),
+                "tools_used": decode_string_list(turn["tools_used"]),
                 "feedback": turn["feedback"],
             },
         ])

@@ -8,7 +8,7 @@ The Crate is a music research companion with the feel of a late-night record sho
   <img src="docs/images/hero-chat.png.png" alt="The Crate chat interface" width="100%" />
 </a>
 
-**[▶ Watch demo — 36 seconds](DEMO_VIDEO_URL)**
+**[▶ Watch demo — 36 seconds](https://drive.google.com/file/d/1-5I93lhEX9--NmXxnsCXB5pKohaNZWsY/view?usp=sharing)**
 
 ## Highlights
 

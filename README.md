@@ -1,144 +1,162 @@
-# 🎵 The Crate
+# The Crate
 
-An **agentic** music encyclopedia RAG application that answers questions about any artist, band, genre, or song — complete with **live lyrics lookup** and **real-time Wikipedia search**. Built for the LLM Zoomcamp final project.
+The Crate is a music research companion with the feel of a late-night record shop. Ask about artists, genres, albums, or songs and it combines local retrieval with live Wikipedia and LRCLIB lookups. Persistent conversations, telemetry, and a monitoring dashboard make the experience easy to revisit and inspect.
 
-## Problem Description
+**Built with:** FastAPI, OpenAI tool calling, local ONNX embeddings, SQLite, vanilla JavaScript, Wikipedia, LRCLIB, and Docker.
 
-Music fans and casual listeners often want quick, reliable answers about artists,
-bands, and genres (formation dates, members, style, influences) without digging
-through long Wikipedia articles or unreliable web search. Traditional RAG systems
-are limited to a fixed, pre-ingested corpus — if the topic isn't in the database,
-the system fails silently or hallucinates.
+<a href="https://drive.google.com/file/d/1-5I93lhEX9--NmXxnsCXB5pKohaNZWsY/view?usp=sharing" title="Watch the 36-second demo">
+  <img src="docs/images/hero-chat.png.png" alt="The Crate chat interface" width="100%" />
+</a>
 
-**The Crate** solves this with an **agentic ReAct loop**: instead of a static
-knowledge base, the LLM orchestrates multiple tools — a local vector index for
-fast lookups, live Wikipedia search for any topic, and a lyrics API for song
-lyrics — deciding at query time which tools to call and how to combine the results.
+**[▶ Watch demo — 36 seconds](DEMO_VIDEO_URL)**
 
-## What Makes This Project Stand Out
+## Highlights
 
-- **Agentic tool use** — the LLM decides which tools to call (local search, Wikipedia, lyrics) using OpenAI function calling, not a fixed retrieval pipeline
-- **Live lyrics integration** — fetches real song lyrics via LRCLIB (free, no API key) — a unique data source
-- **No fixed topic list** — any artist, genre, album, or music concept is answerable via live Wikipedia search
-- **Graceful fallback chain** — local index → Wikipedia → honest "I don't know"
-- **~1 second startup** — precomputed embeddings eliminate the 10-minute ONNX computation on every restart
-- **Cozy Vinyl Den UI** — a custom Burgundy & Dusty Rose design with a tactile "Drop the Needle" turntable button, markdown-rendered answers with typewriter effect, and error toast notifications
+- **OpenAI tool-calling agent** selects and sequences local search, Wikipedia, and lyrics tools.
+- **Local hybrid retrieval** combines lexical and semantic search with Reciprocal Rank Fusion.
+- **Live Wikipedia** expands research beyond the committed local collection.
+- **Structured LRCLIB lyrics display** keeps provider lyrics separate from model-generated prose.
+- **Persistent SQLite conversations** can be created, reopened, and deleted.
+- **Bounded context** sends only a limited, conversation-scoped window of prior turns to the model.
+- **Telemetry and feedback** capture response time, tokens, estimated cost, tools, sources, and answer ratings.
+- **Monitoring dashboard** visualizes usage, latency, cost, feedback, and agent tool usage.
+- **Sanitized frontend rendering** cleans model Markdown before it reaches the DOM.
+- **Evaluated retrieval** compares text, vector, and hybrid retrieval with hit rate and MRR.
 
-## Dataset
+## Demo
 
-Text is pulled from Wikipedia (CC BY-SA, freely licensed) for ~20 music
-genres/artists/bands, chunked into ~180-word passages. See `src/ingest.py`.
-This forms the **local knowledge base** — the agent's fast path for well-known topics.
-For topics not in the local index, the agent searches Wikipedia in real time.
+| Chat experience | Persistent history |
+| --- | --- |
+| <img src="docs/images/hero-chat.png.png" alt="The Crate answering a music question" width="100%" /> | <img src="docs/images/conversation-history.png.png" alt="Saved conversation history in The Crate" width="100%" /> |
+| **Structured lyrics** | **Monitoring dashboard** |
+| <img src="docs/images/lyrics-card.png.png" alt="Structured LRCLIB lyrics card" width="100%" /> | <img src="docs/images/dashboard.png.png" alt="The Crate monitoring dashboard" width="100%" /> |
 
-Song lyrics are fetched live from [LRCLIB](https://lrclib.net/) (community-driven, free, no API key required).
+## How It Works
 
-## Architecture
+```mermaid
+flowchart TD
+    User[User] --> UI[Vinyl Den UI]
+    UI --> API[FastAPI]
+    API --> Agent[OpenAI tool-calling agent]
 
-```
-                         ┌─────────────────────────────────────────┐
-                         │           User Question                 │
-                         └──────────────────┬──────────────────────┘
-                                            ▼
-                         ┌──────────────────────────────────────────┐
-                         │         LLM Agent (ReAct Loop)           │
-                         │                                          │
-                         │  1. Think: What does the user need?      │
-                         │  2. Act:   Pick a tool (or answer)       │
-                         │  3. Observe: Read tool result             │
-                         │  4. Repeat or produce final answer       │
-                         │                                          │
-                         │  Tools:                                  │
-                         │  ┌─────────────┐  ┌──────────────────┐   │
-                         │  │local_search │  │wikipedia_search  │   │
-                         │  │(vector+text)│  │(live MediaWiki)  │   │
-                         │  └─────────────┘  └──────────────────┘   │
-                         │  ┌─────────────┐                         │
-                         │  │lyrics_search│                         │
-                         │  │  (LRCLIB)   │                         │
-                         │  └─────────────┘                         │
-                         └──────────────────┬───────────────────────┘
-                                            ▼
-                         ┌──────────────────────────────────────────┐
-                         │        Grounded Answer + Sources          │
-                         └──────────────────────────────────────────┘
+    Agent --> Local[Local hybrid retrieval<br/>text + ONNX vectors + RRF]
+    Agent --> Wiki[Wikipedia<br/>live article extract]
+    Agent --> Lyrics[LRCLIB<br/>live lyrics lookup]
 
-Backend:    app/main.py (FastAPI)
-              - /ask       Agentic answer + logs interaction
-              - /feedback  Thumbs up/down
-              - /stats     Raw logs for dashboard
+    Local --> Agent
+    Wiki --> Agent
+    Lyrics --> Agent
+    Agent -->|grounded answer, sources, tool trace| API
+    Lyrics -. display request .-> Payload[Structured lyrics payload]
+    Payload --> API
+    API --> UI
 
-Frontend:   static/index.html     (chat UI — Vinyl Den theme)
-            static/dashboard.html (monitoring, 6 charts)
+    API -->|conversations, telemetry, feedback| DB[(SQLite)]
+    Dashboard[Monitoring dashboard] -->|GET /stats| API
+    API -->|aggregated monitoring data| Dashboard
 ```
 
-### Agent Tools
+The agent is instructed to ground factual answers in tool results. For direct lyrics-display requests, verified LRCLIB data can travel to the UI as a structured payload; the application does not ask the model to reproduce the complete lyric body.
 
-| Tool | Source | Description |
-|---|---|---|
-| `local_search` | `data/docs.json` + ONNX embeddings | Hybrid text + vector search (RRF) over the local knowledge base. Fast, no network needed. |
-| `wikipedia_search` | MediaWiki API (live) | Fetches any Wikipedia article in real time. Handles artists, albums, genres, labels, etc. not in the local index. |
-| `lyrics_search` | [LRCLIB API](https://lrclib.net/) (live) | Fetches plain-text song lyrics. Free, no API key, community-maintained. |
+## Key Features
+
+| Area | What it does |
+| --- | --- |
+| Research path | The UI shows tools used and returned source labels alongside responses. |
+| Local knowledge | A committed corpus and matching precomputed embeddings provide a reproducible local retrieval path. |
+| Live sources | Wikipedia supplies article extracts when the local collection is insufficient; LRCLIB serves track-specific lyrics data. |
+| Conversations | Chats receive stable IDs, automatic first-question titles, reopenable history, and scoped deletion. |
+| Feedback loop | Each answer can receive a positive or negative rating tied to its conversation and interaction. |
+| Vinyl Den UX | Loading, cancellation, retry, responsive layout, and user-facing error states are built into the interface. |
+
+## Engineering Decisions
+
+| Decision | Rationale |
+| --- | --- |
+| SQLite for application state | Conversations and telemetry are modest, relational, and accessed through short-lived connections. SQLite keeps the app portable, inspectable, and simple to run locally or in Docker. |
+| ONNX embeddings run locally | The embedding model runs without a hosted vector service, keeping retrieval self-contained once the pinned model is downloaded. |
+| Precomputed embeddings | `data/embeddings.npy` is committed alongside the corpus, so normal startup loads vectors rather than rebuilding them. |
+| Bounded conversation context | Recent history is limited to four turns and 8,000 characters, preserving follow-ups while bounding request size and preventing cross-conversation leakage. |
+| Lyrics separate from prose | Full lyrics come from validated LRCLIB data and are displayed structurally. Lyric bodies are not stored in conversation logs. |
+| Sanitized Markdown | Model answers are converted from Markdown and sanitized with DOMPurify. User input, lyrics, sources, and tool labels are inserted with DOM text APIs. |
 
 ## Evaluation
 
-- **Retrieval evaluation** (`src/evaluate.py`): text search, vector search (BGE small ONNX embeddings),
-  and hybrid search (Reciprocal Rank Fusion) are all evaluated with hit rate and
-  MRR against LLM-generated ground-truth questions (`src/generate_ground_truth.py` using structured output).
-  Results saved to `data/retrieval_eval.json`.
-  - **Text Search**: Hit rate: 64.9% | MRR: 0.547
-  - **Vector Search (ONNX)**: Hit rate: 90.5% | MRR: 0.785
-  - **Hybrid Search**: Hit rate: 91.0% | MRR: 0.711
-  Vector search drastically outperformed text search and is considered the best standalone method. Hybrid search improved the hit rate slightly but heavily degraded MRR because the Reciprocal Rank Fusion (RRF) logic mixes in lower-quality text results without thresholding.
-- **LLM evaluation**: two prompt variants are compared (see `src/evaluate_llm.py`)
-  for answer relevance/faithfulness. With stratified sampling on the evaluation set, both prompts achieved **96.6% relevance**. The better prompt is used in `app/main.py`.
+The local retrieval evaluation compares top-five results from text, vector, and hybrid search against generated question-to-document pairs.
 
-## Setup
+| Method | Hit rate | MRR |
+| --- | ---: | ---: |
+| Text | 0.649 | 0.547 |
+| Vector | 0.905 | 0.785 |
+| Hybrid | 0.910 | 0.711 |
 
-The repository includes the reviewed local corpus (`data/docs.json`) and its
-matching precomputed embeddings (`data/embeddings.npy`). A fresh checkout does
-not need to ingest Wikipedia or compute embeddings before it can run. The only
-runtime asset downloaded during setup is the pinned ONNX model (~127 MiB).
+Hybrid retrieval has the highest hit rate, while vector search has the strongest MRR. Adding text retrieval slightly improves whether a relevant chunk appears in the top five, but it lowers the average rank of the first relevant result. The application currently uses hybrid retrieval for its local-search tool.
 
-### Local development
+These results describe retrieval only; they are not an end-to-end evaluation of the final tool-calling application.
 
-Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), internet access
-for the one-time model download, and a valid OpenAI API key for `/ask`.
+## Monitoring
+
+The dashboard reads `/stats` and visualizes the interaction log:
+
+- question volume over time;
+- estimated API cost by day;
+- positive, negative, and absent feedback;
+- response time per query; and
+- recorded agent tool usage.
+
+SQLite records timing, token counts, estimated cost, tools used, sources, and feedback. The dashboard endpoint does not expose question or answer text.
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| API and agent loop | Python, FastAPI, OpenAI `gpt-4o-mini` function calling |
+| Retrieval | `minsearch`, NumPy, Reciprocal Rank Fusion |
+| Embeddings | `bge-small-en-v1.5` via ONNX Runtime and `tokenizers` |
+| Live sources | Wikipedia MediaWiki API, LRCLIB API |
+| Persistence and monitoring | SQLite, Chart.js |
+| Frontend | Vanilla HTML, CSS, JavaScript, Marked, DOMPurify |
+| Tooling | `uv`, pytest, Docker Compose |
+
+## Project Structure
+
+```text
+app/
+  main.py                 FastAPI routes, agent loop, SQLite logging
+src/
+  tools.py                Local, Wikipedia, and LRCLIB tools
+  search.py               Text, vector, and hybrid retrieval
+  embedder.py             Local ONNX embedding implementation
+  ingest.py               Curated Wikipedia corpus refresh
+  build_embeddings.py     Precompute local vectors
+  evaluate.py             Retrieval evaluation
+static/
+  index.html              Vinyl Den chat interface
+  dashboard.html          Monitoring dashboard
+data/
+  docs.json               Committed local corpus
+  embeddings.npy          Matching precomputed embeddings
+tests/                     API, persistence, tools, and retrieval tests
+```
+
+## Run Locally
+
+Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), an OpenAI API key, and internet access for the one-time model download and live-source requests.
 
 ```bash
 git clone https://github.com/eyademamm/Music-Encyclopedia-RAG.git music-rag
 cd music-rag
 cp .env.example .env
 # Set OPENAI_API_KEY in .env
+
 uv sync --frozen
 uv run python src/download_model.py
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open http://localhost:8000 to ask questions and
-http://localhost:8000/static/dashboard.html for the monitoring dashboard.
+Open [http://localhost:8000](http://localhost:8000) for The Crate and [http://localhost:8000/static/dashboard.html](http://localhost:8000/static/dashboard.html) for monitoring.
 
-### Docker
-
-Prerequisites: Docker Compose, internet access for the image base,
-dependencies, and pinned model download, plus a valid OpenAI API key.
-
-```bash
-git clone https://github.com/eyademamm/Music-Encyclopedia-RAG.git music-rag
-cd music-rag
-cp .env.example .env
-# Set OPENAI_API_KEY in .env
-docker compose up --build
-```
-
-The build downloads the exact model revision used by the committed embeddings.
-The corpus and embeddings are baked into the image; query logs are persisted in
-the `app_runtime` named volume, so they do not hide those retrieval assets.
-
-### Refreshing retrieval assets
-
-Wikipedia content is live and may change. Refresh the corpus only when you
-intend to review and version a new retrieval snapshot:
+The repository already includes the local corpus and matching precomputed embeddings. Rebuild them only when intentionally refreshing the retrieval snapshot:
 
 ```bash
 uv run python src/ingest.py
@@ -146,56 +164,39 @@ uv run python src/build_embeddings.py
 uv run python src/evaluate.py
 ```
 
-Commit `data/docs.json` and `data/embeddings.npy` together after review. The
-existing evaluation data is optional; generating it requires an OpenAI API key:
+Generating the question set or running the separate LLM-judge script also requires `OPENAI_API_KEY`:
 
 ```bash
 uv run python src/generate_ground_truth.py
-uv run python src/evaluate.py
 uv run python src/evaluate_llm.py
 ```
 
-The embedding model remains downloaded rather than committed. Do not commit
-`models/`, `data/logs.db`, or generated evaluation outputs.
+## Docker
 
-## Interface
+Create `.env` as above, set `OPENAI_API_KEY`, then build and start the application:
 
-A bespoke **"The Crate" Vinyl Den** frontend (`static/index.html`) featuring:
+```bash
+docker compose up --build
+```
 
-- **Burgundy & Dusty Rose color palette** — warm, cozy, jazz-lounge aesthetic with dark wood-grain textured background
-- **Tactile "Drop the Needle" button** — 3D embossed turntable-style button with inline tonearm SVG icon
-- **Markdown-rendered answers** — headings, bold, lists, code blocks, and links via `marked.js`
-- **Typewriter effect** — character-by-character answer reveal with variable speed at punctuation
-- **Vinyl loading animation** — spinning record + tonearm lowering during search
-- **Error toast notifications** — slide-in toasts with auto-dismiss for network/server errors
-- **Keyboard UX** — button and input disabled during loading to prevent double-submit
-- **Example question chips** — 4 clickable suggestions including lyrics and unknown-artist queries
-- **Responsive layout** — mobile-friendly with viewport meta and breakpoints
+The image downloads the repository's pinned embedding model during the build and includes the committed corpus and embeddings. Docker Compose stores SQLite runtime data in the `app_runtime` named volume at `/code/runtime/logs.db`, so conversation history and telemetry survive container replacement.
 
-## Monitoring
+## Tests
 
-Every query is logged to `data/logs.db` by default (or the path configured with
-`MUSIC_RAG_DB_PATH`) with response time, real token usage (prompt and completion tokens), calculated cost, tools used,
-and user feedback (👍/👎). `static/dashboard.html` renders 6 charts:
-question volume, estimated daily API cost, feedback distribution, response time per query, retrieval
-method breakdown, and feedback over time. Source tracking is deduplicated to ensure clean source citations in the UI.
+Run the suite with:
 
-## Containerization
+```bash
+uv run pytest
+```
 
-`Dockerfile` + `docker-compose.yml` run the full app in one command after the
-`.env` prerequisite described above: `docker compose up --build`.
+Tests cover request validation, conversation persistence and isolation, SQLite migration behavior, bounded context, telemetry, structured lyrics handling, tool-provider failures, agent-loop limits, hybrid-ranking behavior, and corpus/embedding alignment. They use mocks for external services and do not require network-dependent ingestion or evaluation.
 
-## Best Practices Implemented
+## What I Learned
 
-- [x] Hybrid search (text + vector, combined via Reciprocal Rank Fusion)
-- [x] Agentic tool use (OpenAI function calling with ReAct loop)
-- [x] Precomputed embeddings for fast startup
-- [x] Auto-loaded environment variables (`python-dotenv`)
-- [x] Markdown-rendered answers with typewriter reveal
-- [x] Error handling with user-facing toast notifications
-- [x] Responsive UI with keyboard UX guards
+Building The Crate sharpened the practical boundaries around a small retrieval application: model tool calls need deterministic server-side validation, retrieval assets must be versioned as a matched pair, and conversational context needs explicit limits rather than unbounded replay. Separating provider-owned data such as lyrics from generated text also made the UI safer and the persistence model clearer.
 
-## Tech Stack
+## Possible Next Steps
 
-Python, FastAPI, `minsearch` (text search), `onnxruntime` (`bge-small-en-v1.5` embeddings), OpenAI
-(`gpt-4o-mini`, function calling), LRCLIB (lyrics), Wikipedia MediaWiki API, SQLite, Docker.
+- Version retrieval evaluation artifacts alongside the corpus snapshot.
+- Add curated end-to-end evaluation cases for tool selection and source grounding.
+- Add richer source links and retrieval-result inspection to the UI.
